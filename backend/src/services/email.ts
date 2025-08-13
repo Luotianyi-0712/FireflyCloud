@@ -2,6 +2,7 @@ import nodemailer from 'nodemailer'
 import { nanoid } from 'nanoid'
 import { db } from '../db'
 import { smtpConfig } from '../db/schema'
+import { logger } from '../utils/logger'
 
 // 检查必要的环境变量（作为后备配置）
 function validateEmailConfig() {
@@ -9,10 +10,10 @@ function validateEmailConfig() {
   const missingVars = requiredEnvVars.filter(varName => !process.env[varName])
 
   if (missingVars.length > 0) {
-    console.warn('⚠️ 环境变量中缺少 SMTP 配置，将使用数据库配置')
-    console.warn('缺少的环境变量:', missingVars.join(', '))
+    logger.warn('环境变量中缺少 SMTP 配置，将使用数据库配置')
+    logger.warn(`缺少的环境变量: ${missingVars.join(', ')}`)
   } else {
-    console.log('✅ 环境变量 SMTP 配置检查通过')
+    logger.info('环境变量 SMTP 配置检查通过')
   }
 }
 
@@ -54,7 +55,7 @@ async function getSmtpConfig() {
 
     throw new Error('No SMTP configuration available')
   } catch (error) {
-    console.error('Failed to get SMTP config:', error)
+    logger.error('Failed to get SMTP config:', error)
     throw error
   }
 }
@@ -242,10 +243,12 @@ export async function sendVerificationEmail(email: string, code: string): Promis
     }
 
     const result = await transporter.sendMail(mailOptions)
-    console.log('邮件发送成功:', result.messageId)
+    logger.email(email, '【FireflyCloud】邮箱验证码', true)
+    logger.info(`邮件发送成功: ${result.messageId}`)
     return true
   } catch (error) {
-    console.error('邮件发送失败:', error)
+    logger.email(email, '【FireflyCloud】邮箱验证码', false, error instanceof Error ? error : new Error(String(error)))
+    logger.error('邮件发送失败:', error)
     return false
   }
 }
@@ -258,10 +261,10 @@ export async function verifyEmailConfig(): Promise<boolean> {
     const transporter = nodemailer.default.createTransport(config)
 
     await transporter.verify()
-    console.log('邮件服务配置正确')
+    logger.info('邮件服务配置正确')
     return true
   } catch (error) {
-    console.error('邮件服务配置错误:', error)
+    logger.error('邮件服务配置错误:', error)
     return false
   }
 }

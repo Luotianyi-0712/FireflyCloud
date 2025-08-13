@@ -5,6 +5,7 @@ import { db } from "../db"
 import { users, files, smtpConfig, emailVerificationCodes, storageConfig } from "../db/schema"
 import { eq } from "drizzle-orm"
 import { sendVerificationEmail } from "../services/email"
+import { logger } from "../utils/logger"
 
 export const adminRoutes = new Elysia({ prefix: "/admin" })
   .use(
@@ -114,7 +115,7 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
         emailTemplate: config.emailTemplate || ""
       }
     } catch (error) {
-      console.error("Failed to get SMTP config:", error)
+      logger.error("Failed to get SMTP config:", error)
       set.status = 500
       return {
         error: "Failed to get SMTP configuration",
@@ -171,9 +172,10 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
           })
         }
 
+        logger.info("SMTP configuration updated successfully")
         return { message: "SMTP configuration updated successfully" }
       } catch (error) {
-        console.error("Failed to update SMTP config:", error)
+        logger.error("Failed to update SMTP config:", error)
         set.status = 500
         return { error: "Failed to update SMTP configuration" }
       }
@@ -196,7 +198,7 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
       try {
         const { email, config } = body
 
-        console.log('收到测试邮件请求:', { email, config: { ...config, pass: '***' } })
+        logger.info('收到测试邮件请求', { email, config: { ...config, pass: '***' } })
 
         // 验证必要的配置
         if (!config.host || !config.port || !config.user || !config.pass) {
@@ -222,7 +224,7 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
           return { error: "Failed to send test email" }
         }
       } catch (error) {
-        console.error("Failed to send test email:", error)
+        logger.error("Failed to send test email:", error)
         set.status = 500
         return { error: `发送测试邮件失败: ${error.message}` }
       }
@@ -246,8 +248,8 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
 // 发送测试邮件的函数
 async function sendTestEmail(email: string, code: string, config: any): Promise<boolean> {
   try {
-    console.log('开始发送测试邮件到:', email)
-    console.log('SMTP 配置:', {
+    logger.info(`开始发送测试邮件到: ${email}`)
+    logger.debug('SMTP 配置:', {
       host: config.host,
       port: config.port,
       user: config.user,
@@ -268,7 +270,7 @@ async function sendTestEmail(email: string, code: string, config: any): Promise<
 
     // 首先验证连接
     await transporter.verify()
-    console.log('SMTP 连接验证成功')
+    logger.info('SMTP 连接验证成功')
 
     const template = config.emailTemplate || `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
@@ -294,11 +296,13 @@ async function sendTestEmail(email: string, code: string, config: any): Promise<
     }
 
     const result = await transporter.sendMail(mailOptions)
-    console.log('测试邮件发送成功:', result.messageId)
+    logger.email(email, 'SMTP 测试邮件', true)
+    logger.info(`测试邮件发送成功: ${result.messageId}`)
     return true
   } catch (error) {
-    console.error('测试邮件发送失败:', error)
-    console.error('错误详情:', {
+    logger.email(email, 'SMTP 测试邮件', false, error)
+    logger.error('测试邮件发送失败:', error)
+    logger.debug('错误详情:', {
       message: error.message,
       code: error.code,
       command: error.command
@@ -353,7 +357,7 @@ adminRoutes
         ]
       }
     } catch (error) {
-      console.error("Failed to get database tables:", error)
+      logger.error("Failed to get database tables:", error)
       return { error: "Failed to get database tables" }
     }
   })
@@ -411,7 +415,7 @@ adminRoutes
         count: data.length
       }
     } catch (error) {
-      console.error(`Failed to get table ${params.tableName}:`, error)
+      logger.error(`Failed to get table ${params.tableName}:`, error)
       set.status = 500
       return { error: "Failed to get table data" }
     }

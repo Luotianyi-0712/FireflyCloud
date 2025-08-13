@@ -7,6 +7,7 @@ import { db } from "../db"
 import { users, emailVerificationCodes, smtpConfig } from "../db/schema"
 import { eq, and, gt } from "drizzle-orm"
 import { sendVerificationEmail, generateVerificationCode } from "../services/email"
+import { logger } from "../utils/logger"
 
 // 检查 SMTP 是否启用的辅助函数
 async function isSmtpEnabled(): Promise<boolean> {
@@ -15,17 +16,17 @@ async function isSmtpEnabled(): Promise<boolean> {
 
     if (config) {
       // 如果数据库中有配置，使用数据库配置
-      console.log(`SMTP 状态检查: 使用数据库配置, enabled=${config.enabled}`)
+      logger.debug(`SMTP 状态检查: 使用数据库配置, enabled=${config.enabled}`)
       return config.enabled
     }
 
     // 如果数据库中没有配置，检查环境变量
     const hasEnvConfig = !!(process.env.SMTP_HOST && process.env.SMTP_PORT &&
                            process.env.SMTP_USER && process.env.SMTP_PASS)
-    console.log(`SMTP 状态检查: 使用环境变量配置, enabled=${hasEnvConfig}`)
+    logger.debug(`SMTP 状态检查: 使用环境变量配置, enabled=${hasEnvConfig}`)
     return hasEnvConfig
   } catch (error) {
-    console.error("Failed to check SMTP status:", error)
+    logger.error("Failed to check SMTP status:", error)
     return false
   }
 }
@@ -98,7 +99,7 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
           expiresIn: 600 // 10分钟
         }
       } catch (error) {
-        console.error("发送验证码失败:", error)
+        logger.error("发送验证码失败:", error)
         set.status = 500
         return { error: "发送验证码失败" }
       }
@@ -196,7 +197,7 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
           },
         }
       } catch (error) {
-        console.error("注册失败:", error)
+        logger.error("注册失败:", error)
         set.status = 500
         return { error: "注册失败" }
       }

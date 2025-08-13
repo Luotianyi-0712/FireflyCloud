@@ -1,6 +1,7 @@
 import { drizzle } from "drizzle-orm/bun-sqlite"
 import { Database } from "bun:sqlite"
 import * as schema from "./schema"
+import { logger } from "../utils/logger"
 
 const sqlite = new Database(process.env.DATABASE_PATH || "./netdisk.db")
 export const db = drizzle(sqlite, { schema })
@@ -8,6 +9,8 @@ export const db = drizzle(sqlite, { schema })
 // Initialize database with auto-migration
 function initializeDatabase() {
   try {
+    logger.info('🔧 开始初始化数据库...')
+
     // 创建基础表
     sqlite.exec(`
       CREATE TABLE IF NOT EXISTS users (
@@ -69,9 +72,10 @@ function initializeDatabase() {
     const hasEmailVerified = columns.some(col => col.name === 'email_verified')
 
     if (!hasEmailVerified) {
-      console.log('🔄 添加 email_verified 字段到 users 表...')
+      logger.info('添加 email_verified 字段到 users 表...')
       sqlite.exec('ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0')
-      console.log('✅ email_verified 字段添加成功')
+      logger.database('ALTER', 'users')
+      logger.info('email_verified 字段添加成功')
     }
 
     // 插入默认数据
@@ -97,20 +101,22 @@ function initializeDatabase() {
           VALUES (1, 1, '${process.env.SMTP_HOST}', ${parseInt(process.env.SMTP_PORT || "465")},
                   '${process.env.SMTP_USER}', '${process.env.SMTP_PASS}', 1, ${Date.now()})
         `)
-        console.log('✅ 已从环境变量初始化 SMTP 配置')
+        logger.database('INSERT', 'smtp_config')
+        logger.info('已从环境变量初始化 SMTP 配置')
       } else {
         // 创建默认的禁用配置
         sqlite.exec(`
           INSERT INTO smtp_config (id, enabled, host, port, user, pass, secure, updated_at)
           VALUES (1, 0, '', 465, '', '', 1, ${Date.now()})
         `)
-        console.log('ℹ️ 已创建默认 SMTP 配置（禁用状态）')
+        logger.database('INSERT', 'smtp_config')
+        logger.info('已创建默认 SMTP 配置（禁用状态）')
       }
     }
 
-    console.log('✅ 数据库初始化完成')
+    logger.info('数据库初始化完成')
   } catch (error) {
-    console.error('❌ 数据库初始化失败:', error)
+    logger.error('数据库初始化失败:', error)
     throw error
   }
 }

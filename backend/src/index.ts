@@ -8,9 +8,13 @@ import { authRoutes } from "./routes/auth"
 import { fileRoutes } from "./routes/files"
 import { adminRoutes } from "./routes/admin"
 import { storageRoutes } from "./routes/storage"
+import { logger } from "./utils/logger"
+import { loggingMiddleware } from "./middleware/logging"
 
 // 检查必要的环境变量
 function validateEnvironmentVariables() {
+  logger.info('🔍 开始检查环境变量配置...')
+
   const requiredEnvVars = [
     'JWT_SECRET',
     'DATABASE_URL'
@@ -19,41 +23,45 @@ function validateEnvironmentVariables() {
   const missingVars = requiredEnvVars.filter(varName => !process.env[varName])
 
   if (missingVars.length > 0) {
-    console.error('❌ 服务启动失败：缺少必要的环境变量')
-    console.error('缺少的环境变量:', missingVars.join(', '))
-    console.error('')
-    console.error('请在 backend/.env 文件中配置以下变量:')
-    console.error('JWT_SECRET=your_jwt_secret_key')
-    console.error('DATABASE_URL=./netdisk.db')
-    console.error('PORT=8080 (可选)')
-    console.error('')
-    console.error('SMTP 配置现在可以在管理面板中设置，或者通过环境变量配置:')
-    console.error('SMTP_HOST=your_smtp_host (可选)')
-    console.error('SMTP_PORT=your_smtp_port (可选)')
-    console.error('SMTP_USER=your_smtp_user (可选)')
-    console.error('SMTP_PASS=your_smtp_password (可选)')
-    console.error('')
-    console.error('配置完成后请重新启动服务')
+    logger.fatal('服务启动失败：缺少必要的环境变量')
+    logger.error(`缺少的环境变量: ${missingVars.join(', ')}`)
+    logger.error('')
+    logger.error('请在 backend/.env 文件中配置以下变量:')
+    logger.error('JWT_SECRET=your_jwt_secret_key')
+    logger.error('DATABASE_URL=./netdisk.db')
+    logger.error('PORT=8080 (可选)')
+    logger.error('')
+    logger.error('SMTP 配置现在可以在管理面板中设置，或者通过环境变量配置:')
+    logger.error('SMTP_HOST=your_smtp_host (可选)')
+    logger.error('SMTP_PORT=your_smtp_port (可选)')
+    logger.error('SMTP_USER=your_smtp_user (可选)')
+    logger.error('SMTP_PASS=your_smtp_password (可选)')
+    logger.error('')
+    logger.error('配置完成后请重新启动服务')
     process.exit(1)
   }
 
-  console.log('✅ 环境变量检查通过')
+  logger.info('环境变量检查通过')
 
   // 检查 SMTP 环境变量（可选）
   const smtpEnvVars = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS']
   const missingSmtpVars = smtpEnvVars.filter(varName => !process.env[varName])
 
   if (missingSmtpVars.length === 0) {
-    console.log('✅ SMTP 环境变量配置完整')
+    logger.info('SMTP 环境变量配置完整')
   } else {
-    console.log('ℹ️ SMTP 环境变量不完整，可在管理面板中配置')
+    logger.info('SMTP 环境变量不完整，可在管理面板中配置')
   }
 }
 
 // 启动前检查环境变量
 validateEnvironmentVariables()
 
+logger.info('🚀 正在启动 NetDisk API 服务器...')
+
 const app = new Elysia()
+  // 添加日志中间件（在其他中间件之前）
+  .use(loggingMiddleware)
   .use(
     cors({
       origin: process.env.FRONTEND_URL || "http://localhost:3000",
@@ -78,12 +86,24 @@ const app = new Elysia()
     }),
   )
   .use(bearer())
-  .get("/", () => ({ message: "NetDisk API Server Running" }))
-  .get("/health", () => ({ status: "ok", timestamp: new Date().toISOString() }))
+  .get("/", () => {
+    logger.debug('健康检查请求 - 根路径')
+    return { message: "NetDisk API Server Running" }
+  })
+  .get("/health", () => {
+    logger.debug('健康检查请求 - /health')
+    return { status: "ok", timestamp: new Date().toISOString() }
+  })
   .use(authRoutes)
   .use(fileRoutes)
   .use(adminRoutes)
   .use(storageRoutes)
   .listen(process.env.PORT || 8080)
 
-console.log(`🚀 NetDisk API Server running at http://localhost:${app.server?.port}`)
+const port = app.server?.port || process.env.PORT || 8080
+logger.info(`NetDisk API 服务器启动成功`)
+logger.info(`🌐 服务地址: http://localhost:${port}`)
+logger.info(`📚 API 文档: http://localhost:${port}/swagger`)
+logger.info(`💾 数据库: ${process.env.DATABASE_URL || './netdisk.db'}`)
+logger.info(`🔧 环境: ${process.env.NODE_ENV || 'development'}`)
+logger.info('服务器已准备就绪，等待请求...')
