@@ -15,9 +15,11 @@
         "drizzle-orm": "^0.30.0",
         "elysia": "^1.0.0",
         "nanoid": "^5.0.0",
+        "nodemailer": "^7.0.5",
       },
       "devDependencies": {
         "@types/bcryptjs": "^2.4.6",
+        "@types/nodemailer": "^6.4.17",
         "bun-types": "latest",
       },
     },
@@ -283,6 +285,8 @@
 
     "@types/node": ["@types/node@24.2.1", "https://registry.npmmirror.com/@types/node/-/node-24.2.1.tgz", { "dependencies": { "undici-types": "~7.10.0" } }, "sha512-DRh5K+ka5eJic8CjH7td8QpYEV6Zo10gfRkjHCO3weqZHWDtAaSTFtl4+VMqOJ4N5jcuhZ9/l+yy8rVgw7BQeQ=="],
 
+    "@types/nodemailer": ["@types/nodemailer@6.4.17", "https://registry.npmmirror.com/@types/nodemailer/-/nodemailer-6.4.17.tgz", { "dependencies": { "@types/node": "*" } }, "sha512-I9CCaIp6DTldEg7vyUTZi8+9Vo0hi1/T8gv3C89yk1rSAAzoKQ8H8ki/jBYJSFoH/BisgLP8tkZMlQ91CIquww=="],
+
     "@types/react": ["@types/react@19.1.10", "https://registry.npmmirror.com/@types/react/-/react-19.1.10.tgz", { "dependencies": { "csstype": "^3.0.2" } }, "sha512-EhBeSYX0Y6ye8pNebpKrwFJq7BoQ8J5SO6NlvNwwHjSj6adXJViPQrKlsyPw7hLBLvckEMO1yxeGdR82YBBlDg=="],
 
     "@types/uuid": ["@types/uuid@9.0.8", "https://registry.npmmirror.com/@types/uuid/-/uuid-9.0.8.tgz", {}, "sha512-jg+97EGIcY9AGHJJRaaPVgetKDsrTgbRjQ5Msgjh/DQKEFl0DtyRr/VCOyD1T2R1MNeWPK/u7JoGhlDZnKBAfA=="],
@@ -440,6 +444,8 @@
     "next-tick": ["next-tick@1.1.0", "https://registry.npmmirror.com/next-tick/-/next-tick-1.1.0.tgz", {}, "sha512-CXdUiJembsNjuToQvxayPZF9Vqht7hewsvy2sOWafLvi2awflj9mOC6bHIg50orX8IJvWKY9wYQ/zB2kogPslQ=="],
 
     "node-abi": ["node-abi@3.75.0", "https://registry.npmmirror.com/node-abi/-/node-abi-3.75.0.tgz", { "dependencies": { "semver": "^7.3.5" } }, "sha512-OhYaY5sDsIka7H7AtijtI9jwGYLyl29eQn/W623DiN/MIv5sUqc4g7BIDThX+gb7di9f6xK02nkp8sdfFWZLTg=="],
+
+    "nodemailer": ["nodemailer@7.0.5", "https://registry.npmmirror.com/nodemailer/-/nodemailer-7.0.5.tgz", {}, "sha512-nsrh2lO3j4GkLLXoeEksAMgAOqxOv6QumNRVQTJwKH4nuiww6iC2y7GyANs9kRAxCexg3+lTWM3PZ91iLlVjfg=="],
 
     "once": ["once@1.4.0", "https://registry.npmmirror.com/once/-/once-1.4.0.tgz", { "dependencies": { "wrappy": "1" } }, "sha512-lNaJgI+2Q5URQBkccEKHTQOPaXdUxnZZElQTZY0MFUAuaEqe1E+Nyvgdz/aIyNi6Z9MzO5dv1H8n58/GELp3+w=="],
 

@@ -4,11 +4,12 @@ import { useState, useEffect } from "react"
 import { useAuth } from "@/components/auth/auth-provider"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Users, Files, Settings } from "lucide-react"
+import { Users, Files, Settings, Mail } from "lucide-react"
 import { AdminStats } from "./admin-stats"
 import { UserManagement } from "./user-management"
 import { FileManagement } from "./file-management"
 import { StorageConfiguration } from "./storage-configuration"
+import { SmtpConfiguration } from "./smtp-configuration"
 
 export function AdminDashboard() {
   const [stats, setStats] = useState<any>(null)
@@ -55,7 +56,7 @@ export function AdminDashboard() {
       {stats && <AdminStats stats={stats} />}
 
       <Tabs defaultValue="users" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="users" className="flex items-center gap-2">
             <Users className="h-4 w-4" />
             用户 ({stats?.totalUsers || 0})
@@ -67,6 +68,10 @@ export function AdminDashboard() {
           <TabsTrigger value="storage" className="flex items-center gap-2">
             <Settings className="h-4 w-4" />
             存储设置
+          </TabsTrigger>
+          <TabsTrigger value="smtp" className="flex items-center gap-2">
+            <Mail className="h-4 w-4" />
+            邮件配置
           </TabsTrigger>
         </TabsList>
 
@@ -96,6 +101,10 @@ export function AdminDashboard() {
 
         <TabsContent value="storage" className="space-y-4">
           <StorageConfiguration />
+        </TabsContent>
+
+        <TabsContent value="smtp" className="space-y-4">
+          <SmtpConfiguration />
         </TabsContent>
       </Tabs>
     </div>

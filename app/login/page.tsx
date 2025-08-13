@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Eye, EyeOff, LogIn } from "lucide-react"
+import { Eye, EyeOff, Cloud } from "lucide-react"
 import Link from "next/link"
 
 export default function LoginPage() {
@@ -32,22 +32,31 @@ export default function LoginPage() {
       await login(email, password)
       router.push("/dashboard")
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed")
+      setError(err instanceof Error ? err.message : "登录失败")
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold flex items-center justify-center gap-2">
-            <LogIn className="h-6 w-6" />
-            Sign In
-          </CardTitle>
-          <CardDescription>Enter your credentials to access your NetDisk</CardDescription>
-        </CardHeader>
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <div className="w-full max-w-md">
+        {/* Logo and Brand */}
+        <div className="flex flex-col items-center mb-8">
+          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary mb-4">
+            <Cloud className="h-6 w-6 text-primary-foreground" />
+          </div>
+          <h1 className="text-2xl font-bold">FireflyCloud</h1>
+          <p className="text-muted-foreground text-sm">现代化云存储解决方案</p>
+        </div>
+
+        <Card className="w-full">
+          <CardHeader className="text-center">
+            <CardTitle className="text-2xl font-bold">
+              登录账户
+            </CardTitle>
+            <CardDescription>输入您的凭据以访问 FireflyCloud</CardDescription>
+          </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
@@ -57,26 +66,26 @@ export default function LoginPage() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">邮箱地址</Label>
               <Input
                 id="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@netdisk.com"
+                placeholder="admin@firefly.com"
                 required
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">密码</Label>
               <div className="relative">
                 <Input
                   id="password"
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
+                  placeholder="请输入您的密码"
                   required
                 />
                 <Button
@@ -92,25 +101,26 @@ export default function LoginPage() {
             </div>
 
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Signing in..." : "Sign In"}
+              {loading ? "登录中..." : "登录"}
             </Button>
           </form>
 
           <div className="mt-6 text-center text-sm">
             <p className="text-muted-foreground">
-              Don't have an account?{" "}
+              还没有账户？{" "}
               <Link href="/register" className="text-primary hover:underline">
-                Sign up
+                立即注册
               </Link>
             </p>
           </div>
 
           <div className="mt-4 p-3 bg-muted rounded-lg">
-            <p className="text-sm text-muted-foreground mb-2">Demo Credentials:</p>
-            <p className="text-xs font-mono">Admin: admin@netdisk.com / password</p>
+            <p className="text-sm text-muted-foreground mb-2">演示账户：</p>
+            <p className="text-xs font-mono">管理员: admin@firefly.com / password</p>
           </div>
         </CardContent>
       </Card>
+      </div>
     </div>
   )
 }
