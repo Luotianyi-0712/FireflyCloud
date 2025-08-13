@@ -2,7 +2,9 @@
 
 ## 功能概述
 
-FireflyCloud 现在支持邮箱验证码注册功能，用户在注册时需要验证邮箱地址。
+FireflyCloud 支持可选的邮箱验证码注册功能：
+- **SMTP 启用时**: 用户注册需要邮箱验证码
+- **SMTP 禁用时**: 用户可直接使用邮箱+密码注册，无需验证码
 
 ## SMTP 配置方式
 
@@ -53,7 +55,18 @@ SMTP_PASS=your_smtp_password
 
 ## API 接口
 
-### 1. 发送验证码
+### 1. 检查 SMTP 状态
+
+**GET** `/auth/smtp-status`
+
+响应：
+```json
+{
+  "enabled": true
+}
+```
+
+### 2. 发送验证码（仅在 SMTP 启用时可用）
 
 **POST** `/auth/send-verification-code`
 
@@ -73,16 +86,31 @@ SMTP_PASS=your_smtp_password
 }
 ```
 
-### 2. 注册用户（需要验证码）
+错误响应（SMTP 未启用）：
+```json
+{
+  "error": "邮件服务未启用，无法发送验证码"
+}
+```
+
+### 3. 注册用户（支持两种模式）
 
 **POST** `/auth/register`
 
-请求体：
+**SMTP 启用时的请求体**：
 ```json
 {
   "email": "user@example.com",
   "password": "password123",
   "verificationCode": "123456"
+}
+```
+
+**SMTP 禁用时的请求体**：
+```json
+{
+  "email": "user@example.com",
+  "password": "password123"
 }
 ```
 
@@ -140,11 +168,24 @@ CREATE TABLE email_verification_codes (
 
 ## 前端集成
 
-注册页面新增：
+### 动态注册界面
+注册页面会根据 SMTP 配置状态自动调整：
+
+**SMTP 启用时显示**：
+- 邮箱输入框 + 发送验证码按钮
 - 验证码输入框
-- 发送验证码按钮
 - 60秒倒计时功能
-- 中文错误提示
+- 密码和确认密码输入框
+
+**SMTP 禁用时显示**：
+- 邮箱输入框（无发送按钮）
+- 密码和确认密码输入框
+- 无验证码相关功能
+
+### 状态检查
+- 页面加载时自动检查 SMTP 状态
+- 显示相应的提示信息
+- 动态调整表单验证规则
 
 ## 测试
 

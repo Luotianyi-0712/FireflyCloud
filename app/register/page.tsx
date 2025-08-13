@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import * as React from "react"
 import { useAuth } from "@/components/auth/auth-provider"
 import { useRouter } from "next/navigation"
@@ -25,11 +25,35 @@ export default function RegisterPage() {
   const [sendingCode, setSendingCode] = useState(false)
   const [codeSent, setCodeSent] = useState(false)
   const [countdown, setCountdown] = useState(0)
+  const [smtpEnabled, setSmtpEnabled] = useState<boolean | null>(null)
+  const [checkingSmtp, setCheckingSmtp] = useState(true)
 
   const { register } = useAuth()
   const router = useRouter()
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
+
+  // 检查 SMTP 状态
+  useEffect(() => {
+    const checkSmtpStatus = async () => {
+      try {
+        const response = await fetch(`${API_URL}/auth/smtp-status`)
+        if (response.ok) {
+          const data = await response.json()
+          setSmtpEnabled(data.enabled)
+        } else {
+          setSmtpEnabled(false)
+        }
+      } catch (error) {
+        console.error("Failed to check SMTP status:", error)
+        setSmtpEnabled(false)
+      } finally {
+        setCheckingSmtp(false)
+      }
+    }
+
+    checkSmtpStatus()
+  }, [API_URL])
 
   // 倒计时效果
   React.useEffect(() => {
@@ -42,6 +66,11 @@ export default function RegisterPage() {
 
   // 发送验证码
   const handleSendCode = async () => {
+    if (!smtpEnabled) {
+      setError("邮件服务未启用")
+      return
+    }
+
     if (!email) {
       setError("请先输入邮箱地址")
       return
@@ -79,7 +108,8 @@ export default function RegisterPage() {
     e.preventDefault()
     setError("")
 
-    if (!verificationCode) {
+    // 如果启用了 SMTP，则需要验证码
+    if (smtpEnabled && !verificationCode) {
       setError("请输入邮箱验证码")
       return
     }
@@ -97,16 +127,22 @@ export default function RegisterPage() {
     setLoading(true)
 
     try {
+      const requestBody: any = {
+        email,
+        password,
+      }
+
+      // 只有在启用 SMTP 时才发送验证码
+      if (smtpEnabled) {
+        requestBody.verificationCode = verificationCode
+      }
+
       const response = await fetch(`${API_URL}/auth/register`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          email,
-          password,
-          verificationCode
-        }),
+        body: JSON.stringify(requestBody),
       })
 
       const data = await response.json()
@@ -142,7 +178,12 @@ export default function RegisterPage() {
             <CardTitle className="text-2xl font-bold">
               创建账户
             </CardTitle>
-            <CardDescription>创建您的 FireflyCloud 账户开始使用</CardDescription>
+            <CardDescription>
+              创建您的 FireflyCloud 账户开始使用
+              {checkingSmtp && <span className="block text-xs text-muted-foreground mt-1">正在检查邮件配置...</span>}
+              {!checkingSmtp && smtpEnabled && <span className="block text-xs text-muted-foreground mt-1">需要邮箱验证</span>}
+              {!checkingSmtp && !smtpEnabled && <span className="block text-xs text-muted-foreground mt-1">无需邮箱验证</span>}
+            </CardDescription>
           </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -154,7 +195,28 @@ export default function RegisterPage() {
 
             <div className="space-y-2">
               <Label htmlFor="email">邮箱地址</Label>
-              <div className="flex gap-2">
+              {smtpEnabled ? (
+                <div className="flex gap-2">
+                  <Input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="your@email.com"
+                    required
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleSendCode}
+                    disabled={sendingCode || countdown > 0 || !email}
+                    className="whitespace-nowrap"
+                  >
+                    {sendingCode ? "发送中..." : countdown > 0 ? `${countdown}s` : "发送验证码"}
+                  </Button>
+                </div>
+              ) : (
                 <Input
                   id="email"
                   type="email"
@@ -162,37 +224,29 @@ export default function RegisterPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="your@email.com"
                   required
-                  className="flex-1"
                 />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleSendCode}
-                  disabled={sendingCode || countdown > 0 || !email}
-                  className="whitespace-nowrap"
-                >
-                  {sendingCode ? "发送中..." : countdown > 0 ? `${countdown}s` : "发送验证码"}
-                </Button>
-              </div>
-              {codeSent && (
+              )}
+              {smtpEnabled && codeSent && (
                 <p className="text-sm text-muted-foreground">
                   验证码已发送到您的邮箱，请查收
                 </p>
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="verificationCode">邮箱验证码</Label>
-              <Input
-                id="verificationCode"
-                type="text"
-                value={verificationCode}
-                onChange={(e) => setVerificationCode(e.target.value)}
-                placeholder="请输入6位验证码"
-                maxLength={6}
-                required
-              />
-            </div>
+            {smtpEnabled && (
+              <div className="space-y-2">
+                <Label htmlFor="verificationCode">邮箱验证码</Label>
+                <Input
+                  id="verificationCode"
+                  type="text"
+                  value={verificationCode}
+                  onChange={(e) => setVerificationCode(e.target.value)}
+                  placeholder="请输入6位验证码"
+                  maxLength={6}
+                  required
+                />
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="password">密码</Label>
@@ -229,8 +283,12 @@ export default function RegisterPage() {
               />
             </div>
 
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "创建账户中..." : "创建账户"}
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={loading || checkingSmtp || (smtpEnabled && !verificationCode)}
+            >
+              {loading ? "创建账户中..." : checkingSmtp ? "检查配置中..." : "创建账户"}
             </Button>
           </form>
 

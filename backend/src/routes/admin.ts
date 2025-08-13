@@ -2,7 +2,7 @@ import { Elysia, t } from "elysia"
 import { jwt } from "@elysiajs/jwt"
 import { bearer } from "@elysiajs/bearer"
 import { db } from "../db"
-import { users, files, smtpConfig } from "../db/schema"
+import { users, files, smtpConfig, emailVerificationCodes, storageConfig } from "../db/schema"
 import { eq } from "drizzle-orm"
 import { sendVerificationEmail } from "../services/email"
 
@@ -306,3 +306,113 @@ async function sendTestEmail(email: string, code: string, config: any): Promise<
     return false
   }
 }
+
+// 添加数据库管理路由到主路由
+adminRoutes
+  .get("/database/tables", async () => {
+    try {
+      // 获取所有表的数据统计
+      const usersCount = await db.select().from(users).all()
+      const filesCount = await db.select().from(files).all()
+      const emailCodesCount = await db.select().from(emailVerificationCodes).all()
+      const smtpConfigData = await db.select().from(smtpConfig).all()
+      const storageConfigData = await db.select().from(storageConfig).all()
+
+      return {
+        tables: [
+          {
+            name: "users",
+            displayName: "用户表",
+            count: usersCount.length,
+            description: "存储用户账户信息"
+          },
+          {
+            name: "files",
+            displayName: "文件表",
+            count: filesCount.length,
+            description: "存储文件元数据信息"
+          },
+          {
+            name: "email_verification_codes",
+            displayName: "邮箱验证码表",
+            count: emailCodesCount.length,
+            description: "存储邮箱验证码记录"
+          },
+          {
+            name: "smtp_config",
+            displayName: "SMTP配置表",
+            count: smtpConfigData.length,
+            description: "存储邮件服务器配置"
+          },
+          {
+            name: "storage_config",
+            displayName: "存储配置表",
+            count: storageConfigData.length,
+            description: "存储文件存储配置"
+          }
+        ]
+      }
+    } catch (error) {
+      console.error("Failed to get database tables:", error)
+      return { error: "Failed to get database tables" }
+    }
+  })
+  .get("/database/table/:tableName", async ({ params, set }) => {
+    try {
+      const { tableName } = params
+      let data: any[] = []
+      let columns: string[] = []
+
+      switch (tableName) {
+        case "users":
+          data = await db.select().from(users).all()
+          columns = ["id", "email", "role", "emailVerified", "createdAt", "updatedAt"]
+          // 隐藏密码字段
+          data = data.map(user => ({
+            ...user,
+            password: "***隐藏***"
+          }))
+          break
+        case "files":
+          data = await db.select().from(files).all()
+          columns = ["id", "userId", "filename", "originalName", "size", "mimeType", "storageType", "storagePath", "createdAt"]
+          break
+        case "email_verification_codes":
+          data = await db.select().from(emailVerificationCodes).all()
+          columns = ["id", "email", "code", "expiresAt", "used", "createdAt"]
+          break
+        case "smtp_config":
+          data = await db.select().from(smtpConfig).all()
+          columns = ["id", "enabled", "host", "port", "user", "secure", "updatedAt"]
+          // 隐藏密码字段
+          data = data.map(config => ({
+            ...config,
+            pass: config.pass ? "***隐藏***" : ""
+          }))
+          break
+        case "storage_config":
+          data = await db.select().from(storageConfig).all()
+          columns = ["id", "storageType", "r2Endpoint", "r2AccessKey", "r2Bucket", "updatedAt"]
+          // 隐藏敏感字段
+          data = data.map(config => ({
+            ...config,
+            r2SecretKey: config.r2SecretKey ? "***隐藏***" : ""
+          }))
+          break
+        default:
+          set.status = 404
+          return { error: "Table not found" }
+      }
+
+      return {
+        tableName,
+        columns,
+        data,
+        count: data.length
+      }
+    } catch (error) {
+      console.error(`Failed to get table ${params.tableName}:`, error)
+      set.status = 500
+      return { error: "Failed to get table data" }
+    }
+  })

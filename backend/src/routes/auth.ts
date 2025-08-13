@@ -4,9 +4,31 @@ import { bearer } from "@elysiajs/bearer"
 import bcrypt from "bcryptjs"
 import { nanoid } from "nanoid"
 import { db } from "../db"
-import { users, emailVerificationCodes } from "../db/schema"
+import { users, emailVerificationCodes, smtpConfig } from "../db/schema"
 import { eq, and, gt } from "drizzle-orm"
 import { sendVerificationEmail, generateVerificationCode } from "../services/email"
+
+// 检查 SMTP 是否启用的辅助函数
+async function isSmtpEnabled(): Promise<boolean> {
+  try {
+    const config = await db.select().from(smtpConfig).get()
+
+    if (config) {
+      // 如果数据库中有配置，使用数据库配置
+      console.log(`SMTP 状态检查: 使用数据库配置, enabled=${config.enabled}`)
+      return config.enabled
+    }
+
+    // 如果数据库中没有配置，检查环境变量
+    const hasEnvConfig = !!(process.env.SMTP_HOST && process.env.SMTP_PORT &&
+                           process.env.SMTP_USER && process.env.SMTP_PASS)
+    console.log(`SMTP 状态检查: 使用环境变量配置, enabled=${hasEnvConfig}`)
+    return hasEnvConfig
+  } catch (error) {
+    console.error("Failed to check SMTP status:", error)
+    return false
+  }
+}
 
 export const authRoutes = new Elysia({ prefix: "/auth" })
   .use(
@@ -16,11 +38,23 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
     }),
   )
   .use(bearer())
+  .get("/smtp-status", async () => {
+    const enabled = await isSmtpEnabled()
+    return { enabled }
+  })
   .post(
     "/send-verification-code",
     async ({ body, set }) => {
       try {
         const { email } = body
+
+        // 检查是否启用了 SMTP
+        const smtpEnabled = await isSmtpEnabled()
+
+        if (!smtpEnabled) {
+          set.status = 400
+          return { error: "邮件服务未启用，无法发送验证码" }
+        }
 
         // 检查用户是否已存在
         const existingUser = await db.select().from(users).where(eq(users.email, email)).get()
@@ -88,40 +122,59 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
           return { error: "邮箱已被注册" }
         }
 
-        // 验证邮箱验证码
-        const now = Date.now()
-        const validCode = await db.select()
-          .from(emailVerificationCodes)
-          .where(and(
-            eq(emailVerificationCodes.email, email),
-            eq(emailVerificationCodes.code, verificationCode),
-            eq(emailVerificationCodes.used, false),
-            gt(emailVerificationCodes.expiresAt, now)
-          ))
-          .get()
+        // 检查是否启用了 SMTP
+        const smtpEnabled = await isSmtpEnabled()
 
-        if (!validCode) {
-          set.status = 400
-          return { error: "验证码无效或已过期" }
+        let emailVerified = false
+
+        // 如果启用了 SMTP，则需要验证邮箱验证码
+        if (smtpEnabled) {
+          if (!verificationCode) {
+            set.status = 400
+            return { error: "请输入邮箱验证码" }
+          }
+
+          // 验证邮箱验证码
+          const now = Date.now()
+          const validCode = await db.select()
+            .from(emailVerificationCodes)
+            .where(and(
+              eq(emailVerificationCodes.email, email),
+              eq(emailVerificationCodes.code, verificationCode),
+              eq(emailVerificationCodes.used, false),
+              gt(emailVerificationCodes.expiresAt, now)
+            ))
+            .get()
+
+          if (!validCode) {
+            set.status = 400
+            return { error: "验证码无效或已过期" }
+          }
+
+          // 标记验证码为已使用
+          await db.update(emailVerificationCodes)
+            .set({ used: true })
+            .where(eq(emailVerificationCodes.id, validCode.id))
+
+          emailVerified = true
+        } else {
+          // 如果未启用 SMTP，直接设置为已验证
+          emailVerified = true
         }
-
-        // 标记验证码为已使用
-        await db.update(emailVerificationCodes)
-          .set({ used: true })
-          .where(eq(emailVerificationCodes.id, validCode.id))
 
         // 加密密码
         const hashedPassword = await bcrypt.hash(password, 10)
 
         // 创建用户
         const userId = nanoid()
+        const now = Date.now()
 
         await db.insert(users).values({
           id: userId,
           email,
           password: hashedPassword,
           role: "user",
-          emailVerified: true,
+          emailVerified,
           createdAt: now,
           updatedAt: now,
         })
@@ -139,7 +192,7 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
             id: userId,
             email,
             role: "user",
-            emailVerified: true,
+            emailVerified,
           },
         }
       } catch (error) {
@@ -152,7 +205,7 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
       body: t.Object({
         email: t.String({ format: "email" }),
         password: t.String({ minLength: 6 }),
-        verificationCode: t.String({ minLength: 6, maxLength: 6 }),
+        verificationCode: t.Optional(t.String()),
       }),
     },
   )

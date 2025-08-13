@@ -357,7 +357,6 @@ export function SmtpConfiguration() {
                     onChange={(e) =>
                       setConfig(prev => ({ ...prev, host: e.target.value }))
                     }
-                    disabled={!config.enabled}
                   />
                 </div>
                 <div className="space-y-2">
@@ -370,7 +369,6 @@ export function SmtpConfiguration() {
                     onChange={(e) =>
                       setConfig(prev => ({ ...prev, port: parseInt(e.target.value) || 465 }))
                     }
-                    disabled={!config.enabled}
                   />
                 </div>
               </div>
@@ -385,7 +383,6 @@ export function SmtpConfiguration() {
                     onChange={(e) =>
                       setConfig(prev => ({ ...prev, user: e.target.value }))
                     }
-                    disabled={!config.enabled}
                   />
                 </div>
                 <div className="space-y-2">
@@ -398,7 +395,6 @@ export function SmtpConfiguration() {
                     onChange={(e) =>
                       setConfig(prev => ({ ...prev, pass: e.target.value }))
                     }
-                    disabled={!config.enabled}
                   />
                 </div>
               </div>
@@ -415,12 +411,11 @@ export function SmtpConfiguration() {
                   onCheckedChange={(checked) =>
                     setConfig(prev => ({ ...prev, secure: checked }))
                   }
-                  disabled={!config.enabled}
                 />
               </div>
 
               <div className="flex justify-end">
-                <Button onClick={saveConfig} disabled={saving || !config.enabled}>
+                <Button onClick={saveConfig} disabled={saving}>
                   {saving ? (
                     <>
                       <RefreshCw className="mr-2 h-4 w-4 animate-spin" />

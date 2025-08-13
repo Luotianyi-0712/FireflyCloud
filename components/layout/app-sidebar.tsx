@@ -33,6 +33,7 @@ import {
   LogOut,
   User,
   ChevronUp,
+  Database,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -51,6 +52,12 @@ const adminItems = [
     url: "/admin",
     icon: Settings,
     description: "系统管理",
+  },
+  {
+    title: "数据库管理",
+    url: "/admin/database",
+    icon: Database,
+    description: "数据库可视化管理",
   },
 ]
 
