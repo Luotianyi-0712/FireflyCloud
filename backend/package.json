@@ -1,0 +1,26 @@
+{
+  "name": "netdisk-backend",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "build": "bun build src/index.ts --outdir ./dist",
+    "start": "bun run dist/index.js"
+  },
+  "dependencies": {
+    "elysia": "^1.0.0",
+    "@elysiajs/cors": "^1.0.0",
+    "@elysiajs/jwt": "^1.0.0",
+    "@elysiajs/bearer": "^1.0.0",
+    "@elysiajs/swagger": "^1.0.0",
+    "drizzle-orm": "^0.30.0",
+    "drizzle-kit": "^0.20.0",
+    "@aws-sdk/client-s3": "^3.500.0",
+    "@aws-sdk/s3-request-presigner": "^3.500.0",
+    "bcryptjs": "^2.4.3",
+    "nanoid": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "bun-types": "latest"
+  }
+}
