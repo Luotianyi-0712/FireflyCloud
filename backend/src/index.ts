@@ -11,6 +11,7 @@ import { adminRoutes } from "./routes/admin"
 import { storageRoutes } from "./routes/storage"
 import { downloadRoutes } from "./routes/download"
 import { shareRoutes } from "./routes/share"
+import { pickupRoutes } from "./routes/pickup"
 import { logger } from "./utils/logger"
 import { loggingMiddleware } from "./middleware/logging"
 import { startCleanupScheduler } from "./utils/cleanup"
@@ -105,6 +106,7 @@ const app = new Elysia()
   .use(storageRoutes)
   .use(downloadRoutes)
   .use(shareRoutes)
+  .use(pickupRoutes)
   .listen(process.env.PORT || 8080)
 
 const port = app.server?.port || process.env.PORT || 8080

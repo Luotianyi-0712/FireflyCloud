@@ -42,9 +42,11 @@ import {
   Check,
   Share2,
   Shield,
-  Hash
+  Hash,
+  Clock
 } from "lucide-react"
 import { getFileIcon } from "@/lib/file-icons"
+import { DatePicker } from "@/components/ui/date-picker"
 
 interface FileItem {
   id: string
@@ -83,6 +85,7 @@ export function FileList({ files, onDeleteSuccess }: FileListProps) {
     fileName: string
     requireLogin: boolean
     usePickupCode: boolean
+    expiresAt: Date | undefined
     loading: boolean
     shareUrl: string
     pickupCode: string | null
@@ -92,6 +95,7 @@ export function FileList({ files, onDeleteSuccess }: FileListProps) {
     fileName: "",
     requireLogin: false,
     usePickupCode: false,
+    expiresAt: undefined,
     loading: false,
     shareUrl: "",
     pickupCode: null,
@@ -201,6 +205,7 @@ export function FileList({ files, onDeleteSuccess }: FileListProps) {
       fileName,
       requireLogin: false,
       usePickupCode: false,
+      expiresAt: undefined,
       loading: false,
       shareUrl: "",
       pickupCode: null,
@@ -222,6 +227,7 @@ export function FileList({ files, onDeleteSuccess }: FileListProps) {
         body: JSON.stringify({
           requireLogin: shareDialog.requireLogin,
           usePickupCode: shareDialog.usePickupCode,
+          expiresAt: shareDialog.expiresAt ? shareDialog.expiresAt.getTime() : null,
         }),
       })
 
@@ -479,6 +485,23 @@ export function FileList({ files, onDeleteSuccess }: FileListProps) {
                     <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">BETA</span>
                   </label>
                 </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    有效期
+                  </label>
+                  <DatePicker
+                    date={shareDialog.expiresAt}
+                    onDateChange={(date) => setShareDialog(prev => ({
+                      ...prev,
+                      expiresAt: date
+                    }))}
+                    placeholder="留空表示永久有效"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    设置分享链接的过期时间，留空则永久有效
+                  </p>
+                </div>
                 <p className="text-xs text-muted-foreground">
                   取件码功能正在测试中，将生成6位数字取件码
                 </p>
@@ -518,6 +541,25 @@ export function FileList({ files, onDeleteSuccess }: FileListProps) {
                     <p className="text-xs text-muted-foreground">
                       请将此取件码告知下载者
                     </p>
+                  </div>
+                )}
+                {shareDialog.expiresAt && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium flex items-center gap-2">
+                      <Clock className="h-4 w-4" />
+                      有效期
+                    </label>
+                    <div className="p-3 bg-muted rounded-lg">
+                      <span className="text-sm">
+                        {shareDialog.expiresAt.toLocaleDateString("zh-CN", {
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })} 过期
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>

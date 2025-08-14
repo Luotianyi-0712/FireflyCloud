@@ -324,9 +324,10 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
         return { error: "File not found" }
       }
 
-      const { requireLogin, usePickupCode } = body as {
+      const { requireLogin, usePickupCode, expiresAt } = body as {
         requireLogin: boolean
         usePickupCode: boolean
+        expiresAt: number | null
       }
 
       // 生成分享token和取件码
@@ -344,7 +345,7 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
         requireLogin,
         enabled: true,
         accessCount: 0,
-        expiresAt: null, // 暂时不设置过期时间
+        expiresAt: expiresAt,
         createdAt: now,
         updatedAt: now,
       })
@@ -358,6 +359,7 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
         shareToken,
         pickupCode,
         requireLogin,
+        expiresAt: expiresAt,
         createdAt: now
       }
     } catch (error) {

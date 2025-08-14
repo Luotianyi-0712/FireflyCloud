@@ -34,6 +34,7 @@ import {
   User,
   ChevronUp,
   Database,
+  Hash,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -43,6 +44,12 @@ const navigationItems = [
     url: "/dashboard",
     icon: Files,
     description: "上传和管理您的文件",
+  },
+  {
+    title: "取件码",
+    url: "/pickup",
+    icon: Hash,
+    description: "使用取件码下载文件",
   },
 ]
 

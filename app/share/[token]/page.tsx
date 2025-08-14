@@ -40,6 +40,7 @@ interface ShareInfo {
   hasPickupCode: boolean
   accessCount: number
   createdAt: number
+  expiresAt?: number
 }
 
 export default function SharePage() {
@@ -232,6 +233,12 @@ export default function SharePage() {
                   <Badge variant="outline">
                     已下载 {shareInfo!.accessCount} 次
                   </Badge>
+                  {shareInfo!.expiresAt && (
+                    <Badge variant="outline" className="flex items-center gap-1">
+                      <Calendar className="h-3 w-3" />
+                      {Date.now() > shareInfo!.expiresAt ? "已过期" : `${formatDate(shareInfo!.expiresAt)} 过期`}
+                    </Badge>
+                  )}
                 </div>
               </div>
 
