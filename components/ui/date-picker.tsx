@@ -59,7 +59,7 @@ export function DatePicker({
           {date ? formatDate(date) : <span>{placeholder}</span>}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="flex w-64 flex-col space-y-1.5 p-1.5">
+      <PopoverContent className="flex w-auto flex-col space-y-2 p-3">
         <Select
           onValueChange={(value) => {
             if (value === "clear") {
@@ -69,7 +69,7 @@ export function DatePicker({
             }
           }}
         >
-          <SelectTrigger className="h-8 text-xs">
+          <SelectTrigger className="w-full h-9 text-sm">
             <SelectValue placeholder="快速选择" />
           </SelectTrigger>
           <SelectContent position="popper">
@@ -80,13 +80,13 @@ export function DatePicker({
             <SelectItem value="clear">永久有效</SelectItem>
           </SelectContent>
         </Select>
-        <div className="rounded-md border">
+        <div className="rounded-md border w-full">
           <Calendar
             mode="single"
             selected={date}
             onSelect={onDateChange}
             disabled={(date) => date < new Date()}
-            className="p-1 scale-90"
+            className="p-0"
           />
         </div>
       </PopoverContent>

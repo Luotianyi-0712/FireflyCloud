@@ -499,12 +499,16 @@ export function FileList({ files, onDeleteSuccess }: FileListProps) {
                     placeholder="留空表示永久有效"
                   />
                   <p className="text-xs text-muted-foreground">
-                    设置分享链接的过期时间，留空则永久有效
+                    设置分享的过期时间，留空则永久有效
                   </p>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  取件码功能正在测试中，将生成6位数字取件码
-                </p>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p className="text-xs text-blue-800">
+                    <strong>分享方式说明：</strong><br/>
+                    • <strong>分享链接</strong>：生成链接，任何人都可通过链接访问<br/>
+                    • <strong>取件码</strong>：生成6位数字取件码，需要在取件页面输入取件码
+                  </p>
+                </div>
               </div>
             ) : (
               // 分享结果阶段

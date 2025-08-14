@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/components/auth/auth-provider"
 import { useRouter } from "next/navigation"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -24,12 +24,51 @@ import {
 export default function HomePage() {
   const { user, loading } = useAuth()
   const router = useRouter()
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
 
   useEffect(() => {
     if (!loading && user) {
       router.push("/dashboard")
     }
   }, [user, loading, router])
+
+  // 跟踪鼠标位置
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      setMousePosition({ x: e.clientX, y: e.clientY })
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    return () => window.removeEventListener('mousemove', handleMouseMove)
+  }, [])
+
+  // 根据鼠标位置计算动态渐变色的CSS变量
+  const getDynamicGradientStyle = () => {
+    const { x, y } = mousePosition
+    const windowWidth = typeof window !== 'undefined' ? window.innerWidth : 1920
+    const windowHeight = typeof window !== 'undefined' ? window.innerHeight : 1080
+
+    // 将鼠标位置转换为0-1的比例
+    const xRatio = Math.max(0, Math.min(1, x / windowWidth))
+    const yRatio = Math.max(0, Math.min(1, y / windowHeight))
+
+    // 基于位置计算HSL颜色值
+    const hue1 = Math.floor(200 + xRatio * 160) // 200-360度范围 (蓝色到紫色到红色)
+    const hue2 = Math.floor(240 + yRatio * 120) // 240-360度范围 (蓝色到紫色)
+    const hue3 = Math.floor(180 + (xRatio + yRatio) * 100) // 180-280度范围
+
+    const saturation = Math.floor(60 + (xRatio * yRatio) * 40) // 60-100%
+    const lightness = Math.floor(45 + Math.sin(xRatio * Math.PI) * 15) // 45-60%
+
+    const gradientAngle = Math.floor(xRatio * 180)
+
+    return {
+      '--gradient-color-1': `hsl(${hue1}, ${saturation}%, ${lightness}%)`,
+      '--gradient-color-2': `hsl(${hue2}, ${saturation + 10}%, ${lightness + 5}%)`,
+      '--gradient-color-3': `hsl(${hue3}, ${saturation + 5}%, ${lightness - 5}%)`,
+      '--gradient-angle': `${gradientAngle}deg`,
+    } as React.CSSProperties
+  }
 
   if (loading) {
     return (
@@ -79,7 +118,10 @@ export default function HomePage() {
             </Badge>
 
             <h1 className="text-center text-3xl font-bold leading-tight tracking-tighter md:text-6xl lg:leading-[1.1]">
-              <span className="bg-gradient-to-r from-blue-600 via-purple-600 to-blue-800 bg-clip-text text-transparent">
+              <span
+                className="dynamic-gradient-text transition-all duration-300 ease-out"
+                style={getDynamicGradientStyle()}
+              >
                 安全便捷
               </span>
               的

@@ -330,42 +330,215 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
         expiresAt: number | null
       }
 
-      // 生成分享token和取件码
-      const shareToken = nanoid(32)
-      const pickupCode = usePickupCode ? Math.floor(100000 + Math.random() * 900000).toString() : null
       const shareId = nanoid()
       const now = Date.now()
 
-      await db.insert(fileShares).values({
-        id: shareId,
-        fileId: file.id,
-        userId: user.userId,
-        shareToken,
-        pickupCode,
-        requireLogin,
-        enabled: true,
-        accessCount: 0,
-        expiresAt: expiresAt,
-        createdAt: now,
-        updatedAt: now,
-      })
+      if (usePickupCode) {
+        // 使用取件码模式：只生成取件码，不生成分享链接
+        const pickupCode = Math.floor(100000 + Math.random() * 900000).toString()
 
-      const shareUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/share/${shareToken}`
+        await db.insert(fileShares).values({
+          id: shareId,
+          fileId: file.id,
+          userId: user.userId,
+          shareToken: null, // 取件码模式不生成分享token
+          pickupCode,
+          requireLogin,
+          enabled: true,
+          accessCount: 0,
+          expiresAt: expiresAt,
+          createdAt: now,
+          updatedAt: now,
+        })
 
-      logger.info(`创建文件分享: ${file.originalName} - 用户: ${user.userId} - 分享ID: ${shareId}`)
+        logger.info(`创建文件取件码: ${file.originalName} - 用户: ${user.userId} - 取件码: ${pickupCode}`)
 
-      return {
-        shareUrl,
-        shareToken,
-        pickupCode,
-        requireLogin,
-        expiresAt: expiresAt,
-        createdAt: now
+        return {
+          pickupCode,
+          requireLogin,
+          expiresAt: expiresAt,
+          createdAt: now,
+          usePickupCode: true
+        }
+      } else {
+        // 分享链接模式：只生成分享链接，不生成取件码
+        const shareToken = nanoid(32)
+
+        await db.insert(fileShares).values({
+          id: shareId,
+          fileId: file.id,
+          userId: user.userId,
+          shareToken,
+          pickupCode: null, // 分享链接模式不生成取件码
+          requireLogin,
+          enabled: true,
+          accessCount: 0,
+          expiresAt: expiresAt,
+          createdAt: now,
+          updatedAt: now,
+        })
+
+        const shareUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/share/${shareToken}`
+
+        logger.info(`创建文件分享链接: ${file.originalName} - 用户: ${user.userId} - 分享ID: ${shareId}`)
+
+        return {
+          shareUrl,
+          shareToken,
+          requireLogin,
+          expiresAt: expiresAt,
+          createdAt: now,
+          usePickupCode: false
+        }
       }
     } catch (error) {
       logger.error("创建文件分享失败:", error)
       set.status = 500
       return { error: "Create share failed" }
+    }
+  })
+  // 获取用户的分享列表
+  .get("/shares", async ({ user }) => {
+    try {
+      logger.debug(`获取用户分享列表: ${user.userId}`)
+
+      // 获取用户的所有分享记录，包含文件信息
+      const userShares = await db
+        .select({
+          id: fileShares.id,
+          fileId: fileShares.fileId,
+          shareToken: fileShares.shareToken,
+          pickupCode: fileShares.pickupCode,
+          requireLogin: fileShares.requireLogin,
+          enabled: fileShares.enabled,
+          accessCount: fileShares.accessCount,
+          expiresAt: fileShares.expiresAt,
+          createdAt: fileShares.createdAt,
+          updatedAt: fileShares.updatedAt,
+          fileName: files.originalName,
+          fileSize: files.size,
+          fileMimeType: files.mimeType,
+        })
+        .from(fileShares)
+        .innerJoin(files, eq(fileShares.fileId, files.id))
+        .where(eq(fileShares.userId, user.userId))
+        .orderBy(fileShares.createdAt)
+
+      logger.info(`用户 ${user.userId} 获取了 ${userShares.length} 个分享记录`)
+
+      return { shares: userShares }
+    } catch (error) {
+      logger.error("获取用户分享列表失败:", error)
+      set.status = 500
+      return { error: "Get shares failed" }
+    }
+  })
+  // 更新分享状态（启用/禁用）
+  .put("/shares/:shareId/status", async ({ params, user, body, set }) => {
+    try {
+      logger.debug(`更新分享状态: ${params.shareId} - 用户: ${user.userId}`)
+
+      const { enabled } = body as { enabled: boolean }
+
+      // 检查分享是否属于当前用户
+      const shareRecord = await db
+        .select()
+        .from(fileShares)
+        .where(and(eq(fileShares.id, params.shareId), eq(fileShares.userId, user.userId)))
+        .get()
+
+      if (!shareRecord) {
+        logger.warn(`分享记录未找到: ${params.shareId} - 用户: ${user.userId}`)
+        set.status = 404
+        return { error: "Share not found" }
+      }
+
+      // 更新分享状态
+      await db
+        .update(fileShares)
+        .set({
+          enabled,
+          updatedAt: Date.now()
+        })
+        .where(eq(fileShares.id, params.shareId))
+
+      logger.info(`更新分享状态: ${params.shareId} - 启用: ${enabled} - 用户: ${user.userId}`)
+
+      return { success: true, enabled }
+    } catch (error) {
+      logger.error("更新分享状态失败:", error)
+      set.status = 500
+      return { error: "Update share status failed" }
+    }
+  })
+  // 更新分享有效期
+  .put("/shares/:shareId/expiry", async ({ params, user, body, set }) => {
+    try {
+      logger.debug(`更新分享有效期: ${params.shareId} - 用户: ${user.userId}`)
+
+      const { expiresAt } = body as { expiresAt: number | null }
+
+      // 检查分享是否属于当前用户
+      const shareRecord = await db
+        .select()
+        .from(fileShares)
+        .where(and(eq(fileShares.id, params.shareId), eq(fileShares.userId, user.userId)))
+        .get()
+
+      if (!shareRecord) {
+        logger.warn(`分享记录未找到: ${params.shareId} - 用户: ${user.userId}`)
+        set.status = 404
+        return { error: "Share not found" }
+      }
+
+      // 更新分享有效期
+      await db
+        .update(fileShares)
+        .set({
+          expiresAt,
+          updatedAt: Date.now()
+        })
+        .where(eq(fileShares.id, params.shareId))
+
+      logger.info(`更新分享有效期: ${params.shareId} - 有效期: ${expiresAt} - 用户: ${user.userId}`)
+
+      return { success: true, expiresAt }
+    } catch (error) {
+      logger.error("更新分享有效期失败:", error)
+      set.status = 500
+      return { error: "Update share expiry failed" }
+    }
+  })
+  // 删除分享
+  .delete("/shares/:shareId", async ({ params, user, set }) => {
+    try {
+      logger.debug(`删除分享: ${params.shareId} - 用户: ${user.userId}`)
+
+      // 检查分享是否属于当前用户
+      const shareRecord = await db
+        .select()
+        .from(fileShares)
+        .where(and(eq(fileShares.id, params.shareId), eq(fileShares.userId, user.userId)))
+        .get()
+
+      if (!shareRecord) {
+        logger.warn(`分享记录未找到: ${params.shareId} - 用户: ${user.userId}`)
+        set.status = 404
+        return { error: "Share not found" }
+      }
+
+      // 删除分享记录
+      await db
+        .delete(fileShares)
+        .where(eq(fileShares.id, params.shareId))
+
+      logger.info(`删除分享: ${params.shareId} - 用户: ${user.userId}`)
+
+      return { success: true }
+    } catch (error) {
+      logger.error("删除分享失败:", error)
+      set.status = 500
+      return { error: "Delete share failed" }
     }
   })
   .delete("/:id", async ({ params, user, set }) => {

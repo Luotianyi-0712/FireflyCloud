@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
+import { useAuth } from "@/components/auth/auth-provider"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -45,15 +46,15 @@ interface ShareInfo {
 
 export default function SharePage() {
   const params = useParams()
+  const router = useRouter()
+  const { user } = useAuth()
   const token = params.token as string
-  
+
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [fileInfo, setFileInfo] = useState<FileInfo | null>(null)
   const [shareInfo, setShareInfo] = useState<ShareInfo | null>(null)
-  const [pickupCode, setPickupCode] = useState("")
   const [downloading, setDownloading] = useState(false)
-  const [pickupCodeDialog, setPickupCodeDialog] = useState(false)
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
 
@@ -84,13 +85,7 @@ export default function SharePage() {
   const handleDownload = async () => {
     if (!fileInfo || !shareInfo) return
 
-    // 如果需要取件码，先显示取件码输入对话框
-    if (shareInfo.hasPickupCode) {
-      setPickupCodeDialog(true)
-      return
-    }
-
-    // 直接下载
+    // 分享链接直接下载，不需要取件码
     await performDownload()
   }
 
@@ -98,25 +93,18 @@ export default function SharePage() {
     setDownloading(true)
 
     try {
-      const requestBody: any = {}
-      if (shareInfo?.hasPickupCode) {
-        requestBody.pickupCode = pickupCode
-      }
-
       const response = await fetch(`${API_URL}/share/${token}/download`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify({}), // 分享链接不需要取件码
       })
 
       if (response.ok) {
         const data = await response.json()
         // 在新窗口中打开下载链接
         window.open(data.downloadUrl, '_blank')
-        setPickupCodeDialog(false)
-        setPickupCode("")
       } else {
         const errorData = await response.json().catch(() => ({}))
         alert(`下载失败: ${errorData.error || '未知错误'}`)
@@ -175,13 +163,52 @@ export default function SharePage() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container mx-auto flex h-14 items-center px-4">
+        <div className="container mx-auto flex h-14 items-center justify-between px-4">
           <div className="flex items-center space-x-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
               <Cloud className="h-4 w-4 text-primary-foreground" />
             </div>
             <span className="font-bold">FireflyCloud</span>
           </div>
+
+          {/* 登录注册按钮 - 仅在未登录时显示 */}
+          {!user && (
+            <div className="flex items-center space-x-1 md:space-x-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => router.push("/login")}
+                className="text-xs md:text-sm"
+              >
+                登录
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => router.push("/register")}
+                className="text-xs md:text-sm"
+              >
+                注册
+              </Button>
+            </div>
+          )}
+
+          {/* 已登录用户信息 */}
+          {user && (
+            <div className="flex items-center space-x-1 md:space-x-2">
+              <span className="text-xs md:text-sm text-muted-foreground hidden sm:inline">
+                欢迎，{user.email}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push("/dashboard")}
+                className="text-xs md:text-sm"
+              >
+                <span className="hidden sm:inline">进入仪表板</span>
+                <span className="sm:hidden">仪表板</span>
+              </Button>
+            </div>
+          )}
         </div>
       </header>
 
@@ -224,12 +251,7 @@ export default function SharePage() {
                       需要登录
                     </Badge>
                   )}
-                  {shareInfo!.hasPickupCode && (
-                    <Badge variant="outline" className="flex items-center gap-1">
-                      <Hash className="h-3 w-3" />
-                      需要取件码
-                    </Badge>
-                  )}
+
                   <Badge variant="outline">
                     已下载 {shareInfo!.accessCount} 次
                   </Badge>
@@ -261,40 +283,7 @@ export default function SharePage() {
         </div>
       </div>
 
-      {/* 取件码对话框 */}
-      <Dialog open={pickupCodeDialog} onOpenChange={setPickupCodeDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>输入取件码</DialogTitle>
-            <DialogDescription>
-              此文件需要取件码才能下载，请输入6位数字取件码
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <Input
-              placeholder="请输入6位数字取件码"
-              value={pickupCode}
-              onChange={(e) => setPickupCode(e.target.value)}
-              maxLength={6}
-              className="text-center text-lg tracking-widest"
-            />
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setPickupCodeDialog(false)}
-            >
-              取消
-            </Button>
-            <Button
-              onClick={performDownload}
-              disabled={downloading || pickupCode.length !== 6}
-            >
-              {downloading ? "下载中..." : "确认下载"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+
     </div>
   )
 }

@@ -66,7 +66,7 @@ export const shareRoutes = new Elysia({ prefix: "/share" })
         },
         share: {
           requireLogin: shareRecord.requireLogin,
-          hasPickupCode: !!shareRecord.pickupCode,
+          hasPickupCode: false, // 分享链接不使用取件码
           accessCount: shareRecord.accessCount,
           createdAt: shareRecord.createdAt,
         }
@@ -109,15 +109,7 @@ export const shareRoutes = new Elysia({ prefix: "/share" })
         return { error: "Share expired" }
       }
 
-      // 如果需要取件码，验证取件码
-      if (shareRecord.pickupCode) {
-        const { pickupCode } = body as { pickupCode?: string }
-        if (!pickupCode || pickupCode !== shareRecord.pickupCode) {
-          logger.warn(`取件码错误: ${params.token}`)
-          set.status = 400
-          return { error: "Invalid pickup code" }
-        }
-      }
+      // 分享链接不需要验证取件码，直接允许下载
 
       // 获取文件信息
       const file = await db

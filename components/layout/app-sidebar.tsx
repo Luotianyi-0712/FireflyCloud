@@ -35,6 +35,7 @@ import {
   ChevronUp,
   Database,
   Hash,
+  Share2,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -44,6 +45,12 @@ const navigationItems = [
     url: "/dashboard",
     icon: Files,
     description: "上传和管理您的文件",
+  },
+  {
+    title: "我的分享",
+    url: "/shares",
+    icon: Share2,
+    description: "管理您的分享文件",
   },
   {
     title: "取件码",

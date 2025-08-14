@@ -89,7 +89,7 @@ export const fileShares = sqliteTable("file_shares", {
   id: text("id").primaryKey(),
   fileId: text("file_id").notNull(),
   userId: text("user_id").notNull(),
-  shareToken: text("share_token").notNull().unique(),
+  shareToken: text("share_token").unique(), // 分享链接token，可选（取件码模式不需要）
   pickupCode: text("pickup_code"), // 取件码，可选
   requireLogin: integer("require_login", { mode: "boolean" }).notNull().default(false),
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),

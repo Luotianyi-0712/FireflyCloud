@@ -44,6 +44,8 @@ export function AppLayout({ children }: AppLayoutProps) {
         label = "管理面板"
       } else if (segment === "pickup") {
         label = "取件码"
+      } else if (segment === "shares") {
+        label = "我的分享"
       }
 
       const isActive = index === segments.length - 1

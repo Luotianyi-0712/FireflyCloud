@@ -72,7 +72,7 @@ export default function LoginPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@firefly.com"
+                placeholder="请输入您的邮箱地址"
                 required
               />
             </div>
@@ -112,11 +112,6 @@ export default function LoginPage() {
                 立即注册
               </Link>
             </p>
-          </div>
-
-          <div className="mt-4 p-3 bg-muted rounded-lg">
-            <p className="text-sm text-muted-foreground mb-2">演示账户：</p>
-            <p className="text-xs font-mono">管理员: admin@firefly.com / password</p>
           </div>
         </CardContent>
       </Card>
