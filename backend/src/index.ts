@@ -6,10 +6,14 @@ import { bearer } from "@elysiajs/bearer"
 
 import { authRoutes } from "./routes/auth"
 import { fileRoutes } from "./routes/files"
+import { folderRoutes } from "./routes/folders"
 import { adminRoutes } from "./routes/admin"
 import { storageRoutes } from "./routes/storage"
+import { downloadRoutes } from "./routes/download"
+import { shareRoutes } from "./routes/share"
 import { logger } from "./utils/logger"
 import { loggingMiddleware } from "./middleware/logging"
+import { startCleanupScheduler } from "./utils/cleanup"
 
 // 检查必要的环境变量
 function validateEnvironmentVariables() {
@@ -96,8 +100,11 @@ const app = new Elysia()
   })
   .use(authRoutes)
   .use(fileRoutes)
+  .use(folderRoutes)
   .use(adminRoutes)
   .use(storageRoutes)
+  .use(downloadRoutes)
+  .use(shareRoutes)
   .listen(process.env.PORT || 8080)
 
 const port = app.server?.port || process.env.PORT || 8080
@@ -106,4 +113,8 @@ logger.info(`🌐 服务地址: http://localhost:${port}`)
 logger.info(`📚 API 文档: http://localhost:${port}/swagger`)
 logger.info(`💾 数据库: ${process.env.DATABASE_URL || './netdisk.db'}`)
 logger.info(`🔧 环境: ${process.env.NODE_ENV || 'development'}`)
+
+// 启动下载令牌清理调度器
+startCleanupScheduler()
+
 logger.info('服务器已准备就绪，等待请求...')

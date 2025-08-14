@@ -16,7 +16,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { File, Trash2, Calendar, HardDrive, User } from "lucide-react"
+import { Trash2, Calendar, HardDrive, User } from "lucide-react"
+import { getFileIcon } from "@/lib/file-icons"
 
 interface FileItem {
   id: string
@@ -108,14 +109,7 @@ export function FileManagement({ onFileDeleted }: FileManagementProps) {
     })
   }
 
-  const getFileIcon = (mimeType: string) => {
-    if (mimeType.startsWith("image/")) return "🖼️"
-    if (mimeType.startsWith("video/")) return "🎥"
-    if (mimeType.startsWith("audio/")) return "🎵"
-    if (mimeType.includes("pdf")) return "📄"
-    if (mimeType.includes("text")) return "📝"
-    return "📁"
-  }
+
 
   if (loading) {
     return (
@@ -142,7 +136,7 @@ export function FileManagement({ onFileDeleted }: FileManagementProps) {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4 flex-1 min-w-0">
-                <div className="text-2xl">{getFileIcon(file.mimeType)}</div>
+                <div>{getFileIcon(file.mimeType, file.originalName)}</div>
                 <div className="flex-1 min-w-0">
                   <h4 className="font-medium truncate">{file.originalName}</h4>
                   <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">

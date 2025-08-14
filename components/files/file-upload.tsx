@@ -11,6 +11,7 @@ import { useDropzone } from "react-dropzone"
 
 interface FileUploadProps {
   onUploadSuccess: () => void
+  currentFolderId?: string | null
 }
 
 interface UploadFile {
@@ -20,7 +21,7 @@ interface UploadFile {
   error?: string
 }
 
-export function FileUpload({ onUploadSuccess }: FileUploadProps) {
+export function FileUpload({ onUploadSuccess, currentFolderId }: FileUploadProps) {
   const [uploadFiles, setUploadFiles] = useState<UploadFile[]>([])
   const [error, setError] = useState("")
   const { token } = useAuth()
@@ -56,6 +57,11 @@ export function FileUpload({ onUploadSuccess }: FileUploadProps) {
     try {
       const formData = new FormData()
       formData.append("file", fileItem.file)
+
+      // 添加文件夹ID到表单数据
+      if (currentFolderId) {
+        formData.append("folderId", currentFolderId)
+      }
 
       const response = await fetch(`${API_URL}/files/upload`, {
         method: "POST",

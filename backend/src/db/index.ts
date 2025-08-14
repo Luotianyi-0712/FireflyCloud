@@ -22,9 +22,22 @@ function initializeDatabase() {
         updated_at INTEGER NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS folders (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        parent_id TEXT,
+        path TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+        FOREIGN KEY (parent_id) REFERENCES folders (id) ON DELETE CASCADE
+      );
+
       CREATE TABLE IF NOT EXISTS files (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
+        folder_id TEXT,
         filename TEXT NOT NULL,
         original_name TEXT NOT NULL,
         size INTEGER NOT NULL,
@@ -32,7 +45,8 @@ function initializeDatabase() {
         storage_type TEXT NOT NULL,
         storage_path TEXT NOT NULL,
         created_at INTEGER NOT NULL,
-        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+        FOREIGN KEY (folder_id) REFERENCES folders (id) ON DELETE CASCADE
       );
 
       CREATE TABLE IF NOT EXISTS storage_config (
@@ -68,14 +82,25 @@ function initializeDatabase() {
     `)
 
     // 检查并添加 email_verified 字段
-    const columns = sqlite.prepare("PRAGMA table_info(users)").all()
-    const hasEmailVerified = columns.some(col => col.name === 'email_verified')
+    const userColumns = sqlite.prepare("PRAGMA table_info(users)").all()
+    const hasEmailVerified = userColumns.some(col => col.name === 'email_verified')
 
     if (!hasEmailVerified) {
       logger.info('添加 email_verified 字段到 users 表...')
       sqlite.exec('ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0')
       logger.database('ALTER', 'users')
       logger.info('email_verified 字段添加成功')
+    }
+
+    // 检查并添加 folder_id 字段到 files 表
+    const fileColumns = sqlite.prepare("PRAGMA table_info(files)").all()
+    const hasFolderId = fileColumns.some(col => col.name === 'folder_id')
+
+    if (!hasFolderId) {
+      logger.info('添加 folder_id 字段到 files 表...')
+      sqlite.exec('ALTER TABLE files ADD COLUMN folder_id TEXT')
+      logger.database('ALTER', 'files')
+      logger.info('folder_id 字段添加成功')
     }
 
     // 插入默认数据

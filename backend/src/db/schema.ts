@@ -19,9 +19,20 @@ export const emailVerificationCodes = sqliteTable("email_verification_codes", {
   createdAt: integer("created_at").notNull(),
 })
 
+export const folders = sqliteTable("folders", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  parentId: text("parent_id"), // null for root folders
+  path: text("path").notNull(), // full path for easy querying
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+})
+
 export const files = sqliteTable("files", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull(),
+  folderId: text("folder_id"), // null for root files
   filename: text("filename").notNull(),
   originalName: text("original_name").notNull(),
   size: integer("size").notNull(),
@@ -50,5 +61,40 @@ export const smtpConfig = sqliteTable("smtp_config", {
   pass: text("pass"),
   secure: integer("secure", { mode: "boolean" }).notNull().default(true),
   emailTemplate: text("email_template"),
+  updatedAt: integer("updated_at").notNull(),
+})
+
+export const downloadTokens = sqliteTable("download_tokens", {
+  id: text("id").primaryKey(),
+  fileId: text("file_id").notNull(),
+  userId: text("user_id").notNull(),
+  token: text("token").notNull().unique(),
+  used: integer("used", { mode: "boolean" }).notNull().default(false),
+  expiresAt: integer("expires_at").notNull(),
+  createdAt: integer("created_at").notNull(),
+})
+
+export const fileDirectLinks = sqliteTable("file_direct_links", {
+  id: text("id").primaryKey(),
+  fileId: text("file_id").notNull().unique(), // 一个文件只能有一个直链
+  userId: text("user_id").notNull(),
+  directName: text("direct_name").notNull().unique(), // 直链使用的文件名
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  accessCount: integer("access_count").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+})
+
+export const fileShares = sqliteTable("file_shares", {
+  id: text("id").primaryKey(),
+  fileId: text("file_id").notNull(),
+  userId: text("user_id").notNull(),
+  shareToken: text("share_token").notNull().unique(),
+  pickupCode: text("pickup_code"), // 取件码，可选
+  requireLogin: integer("require_login", { mode: "boolean" }).notNull().default(false),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  accessCount: integer("access_count").notNull().default(0),
+  expiresAt: integer("expires_at"), // 过期时间，可选
+  createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 })
