@@ -67,33 +67,7 @@ logger.info('🚀 正在启动 NetDisk API 服务器...')
 const app = new Elysia()
   // 添加日志中间件（在其他中间件之前）
   .use(loggingMiddleware)
-  .use(
-    cors({
-      origin: (request) => {
-        const origin = request.headers.get('origin')
-
-        // 允许的域名列表
-        const allowedOrigins = [
-          "http://localhost:3000",
-          "https://drive.cialloo.site",
-          process.env.FRONTEND_URL
-        ].filter(Boolean) // 过滤掉空值
-
-        // 如果没有origin（比如同源请求）或者origin在允许列表中，则允许
-        if (!origin || allowedOrigins.includes(origin)) {
-          return true
-        }
-
-        // 开发环境允许localhost的任意端口
-        if (process.env.NODE_ENV === 'development' && origin?.startsWith('http://localhost:')) {
-          return true
-        }
-
-        return false
-      },
-      credentials: true,
-    }),
-  )
+  .use(cors())
   .use(
     swagger({
       documentation: {

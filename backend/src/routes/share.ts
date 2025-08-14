@@ -7,6 +7,7 @@ import { eq, and } from "drizzle-orm"
 import { StorageService } from "../services/storage"
 import { nanoid } from "nanoid"
 import { logger } from "../utils/logger"
+import { getBaseUrl } from "../utils/url"
 
 export const shareRoutes = new Elysia({ prefix: "/share" })
   // 获取分享信息（无需认证）
@@ -78,7 +79,7 @@ export const shareRoutes = new Elysia({ prefix: "/share" })
     }
   })
   // 下载分享文件
-  .post("/:token/download", async ({ params, body, set }) => {
+  .post("/:token/download", async ({ params, body, set, headers }) => {
     try {
       logger.debug(`下载分享文件: ${params.token}`)
 
@@ -150,9 +151,10 @@ export const shareRoutes = new Elysia({ prefix: "/share" })
 
       logger.info(`生成分享文件下载令牌: ${file.originalName} - 分享ID: ${shareRecord.id}`)
 
-      // 返回下载URL
-      const downloadUrl = `${process.env.BACKEND_URL || "http://localhost:8080"}/files/download/${downloadToken}`
-      
+      // 返回下载URL - 自动获取域名
+      const baseUrl = getBaseUrl(headers)
+      const downloadUrl = `${baseUrl}/files/download/${downloadToken}`
+
       return { downloadUrl }
     } catch (error) {
       logger.error("下载分享文件失败:", error)

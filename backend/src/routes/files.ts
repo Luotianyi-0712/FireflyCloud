@@ -7,6 +7,7 @@ import { files, storageConfig, folders, downloadTokens, fileDirectLinks, fileSha
 import { eq, and, isNull } from "drizzle-orm"
 import { StorageService } from "../services/storage"
 import { logger } from "../utils/logger"
+import { getBaseUrl, getFrontendUrl } from "../utils/url"
 
 export const fileRoutes = new Elysia({ prefix: "/files" })
   .use(
@@ -134,7 +135,7 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
       }),
     },
   )
-  .get("/:id/download", async ({ params, user, set }) => {
+  .get("/:id/download", async ({ params, user, set, headers }) => {
     try {
       logger.debug(`请求下载令牌: ${params.id} - 用户: ${user.userId}`)
 
@@ -167,8 +168,9 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
 
       logger.info(`生成下载令牌: ${file.originalName} - 用户: ${user.userId} - 令牌: ${tokenId}`)
 
-      // 返回下载URL，包含令牌
-      const downloadUrl = `${process.env.BACKEND_URL || "http://localhost:8080"}/files/download/${downloadToken}`
+      // 返回下载URL，包含令牌 - 自动获取域名
+      const baseUrl = getBaseUrl(headers)
+      const downloadUrl = `${baseUrl}/files/download/${downloadToken}`
 
       return { downloadUrl }
     } catch (error) {
@@ -178,7 +180,7 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
     }
   })
   // 获取文件直链
-  .get("/:id/direct-link", async ({ params, user, set }) => {
+  .get("/:id/direct-link", async ({ params, user, set, headers }) => {
     try {
       logger.debug(`获取文件直链: ${params.id} - 用户: ${user.userId}`)
 
@@ -257,7 +259,9 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
         logger.info(`创建文件直链: ${file.originalName} -> ${directName} - 用户: ${user.userId}`)
       }
 
-      const directUrl = `${process.env.BACKEND_URL || "http://localhost:8080"}/files/direct/${directLink.directName}`
+      // 自动获取域名生成直链URL
+      const baseUrl = getBaseUrl(headers)
+      const directUrl = `${baseUrl}/files/direct/${directLink.directName}`
 
       return {
         directUrl,
@@ -308,7 +312,7 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
     }
   })
   // 创建文件分享
-  .post("/:id/share", async ({ params, user, body, set }) => {
+  .post("/:id/share", async ({ params, user, body, set, headers }) => {
     try {
       logger.debug(`创建文件分享: ${params.id} - 用户: ${user.userId}`)
 
@@ -378,7 +382,9 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
           updatedAt: now,
         })
 
-        const shareUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/share/${shareToken}`
+        // 自动获取前端域名生成分享URL
+        const frontendUrl = getFrontendUrl(headers)
+        const shareUrl = `${frontendUrl}/share/${shareToken}`
 
         logger.info(`创建文件分享链接: ${file.originalName} - 用户: ${user.userId} - 分享ID: ${shareId}`)
 
