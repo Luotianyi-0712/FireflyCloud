@@ -108,6 +108,7 @@ export const fileShares = sqliteTable("file_shares", {
   shareToken: text("share_token").unique(), // 分享链接token，可选（取件码模式不需要）
   pickupCode: text("pickup_code"), // 取件码，可选
   requireLogin: integer("require_login", { mode: "boolean" }).notNull().default(false),
+  gatekeeper: integer("gatekeeper", { mode: "boolean" }).notNull().default(false), // 守门模式：只显示文件详情，禁用下载
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
   accessCount: integer("access_count").notNull().default(0),
   expiresAt: integer("expires_at"), // 过期时间，可选

@@ -68,6 +68,8 @@ export const pickupRoutes = new Elysia({ prefix: "/pickup" })
           hasPickupCode: true,
           accessCount: shareRecord.accessCount,
           createdAt: shareRecord.createdAt,
+          expiresAt: shareRecord.expiresAt,
+          gatekeeper: shareRecord.gatekeeper
         },
         shareToken: shareRecord.shareToken, // 用于后续下载
       }

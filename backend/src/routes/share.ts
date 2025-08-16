@@ -70,6 +70,8 @@ export const shareRoutes = new Elysia({ prefix: "/share" })
           hasPickupCode: false, // 分享链接不使用取件码
           accessCount: shareRecord.accessCount,
           createdAt: shareRecord.createdAt,
+          expiresAt: shareRecord.expiresAt,
+          gatekeeper: shareRecord.gatekeeper
         }
       }
     } catch (error) {
@@ -108,6 +110,13 @@ export const shareRoutes = new Elysia({ prefix: "/share" })
         logger.warn(`分享已过期: ${params.token}`)
         set.status = 410
         return { error: "Share expired" }
+      }
+
+      // 检查守门模式
+      if (shareRecord.gatekeeper) {
+        logger.warn(`分享启用了守门模式，禁止下载: ${params.token}`)
+        set.status = 403
+        return { error: "Download forbidden in gatekeeper mode" }
       }
 
       // 分享链接不需要验证取件码，直接允许下载

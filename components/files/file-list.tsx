@@ -47,6 +47,7 @@ import {
   CheckCircle,
   Shield,
   Hash,
+  Eye,
   Clock,
 } from "lucide-react"
 import { getFileIcon } from "@/lib/file-icons"
@@ -104,6 +105,7 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
     loading: boolean
     shareUrl: string
     pickupCode: string | null
+    gatekeeper: boolean
   }>({
     open: false,
     fileId: "",
@@ -114,6 +116,7 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
     loading: false,
     shareUrl: "",
     pickupCode: null,
+    gatekeeper: false,
   })
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -263,6 +266,7 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
       loading: false,
       shareUrl: "",
       pickupCode: null,
+      gatekeeper: false,
     })
   }
 
@@ -282,6 +286,7 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
           requireLogin: shareDialog.requireLogin,
           usePickupCode: shareDialog.usePickupCode,
           expiresAt: shareDialog.expiresAt ? shareDialog.expiresAt.getTime() : null,
+          gatekeeper: shareDialog.gatekeeper,
         }),
       })
 
@@ -626,6 +631,23 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
                     <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">BETA</span>
                   </label>
                 </div>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="gatekeeper"
+                    checked={shareDialog.gatekeeper}
+                    onChange={(e) => setShareDialog(prev => ({
+                      ...prev,
+                      gatekeeper: e.target.checked
+                    }))}
+                    className="rounded"
+                  />
+                  <label htmlFor="gatekeeper" className="text-sm font-medium flex items-center gap-2">
+                    <Eye className="h-4 w-4" />
+                    守门模式
+                    <span className="bg-orange-100 text-orange-800 text-xs px-2 py-1 rounded-full">NEW</span>
+                  </label>
+                </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium flex items-center gap-2">
                     <Clock className="h-4 w-4" />
@@ -647,7 +669,8 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
                   <p className="text-xs text-blue-800">
                     <strong>分享方式说明：</strong><br/>
                     • <strong>分享链接</strong>：生成链接，任何人都可通过链接访问<br/>
-                    • <strong>取件码</strong>：生成6位数字取件码，需要在取件页面输入取件码
+                    • <strong>取件码</strong>：生成6位数字取件码，需要在取件页面输入取件码<br/>
+                    • <strong>守门模式</strong>：只允许查看文件信息，禁止下载文件内容
                   </p>
                 </div>
               </div>

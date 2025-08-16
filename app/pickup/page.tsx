@@ -15,7 +15,9 @@ import {
   Shield,
   AlertCircle,
   Search,
-  Loader2
+  Loader2,
+  Eye,
+  Package
 } from "lucide-react"
 import { getFileIcon, getFileTypeDescription } from "@/lib/file-icons"
 import { downloadFile } from "@/lib/utils"
@@ -34,6 +36,7 @@ interface ShareInfo {
   accessCount: number
   createdAt: number
   expiresAt?: number
+  gatekeeper: boolean
 }
 
 export default function PickupPage() {
@@ -142,27 +145,25 @@ export default function PickupPage() {
   return (
     <AppLayout>
       <div className="container mx-auto px-4 py-8">
-        <div className="max-w-2xl mx-auto space-y-6">
-          {/* 页面标题 */}
-          <div className="text-center space-y-2">
-            <div className="flex items-center justify-center gap-2">
-              <Hash className="h-8 w-8 text-primary" />
-              <h1 className="text-3xl font-bold">取件码下载</h1>
-            </div>
-            <p className="text-muted-foreground">
-              输入6位数字取件码来获取和下载文件
-            </p>
-          </div>
-
-          {/* 取件码输入 */}
-          <Card>
+        <div className="max-w-2xl mx-auto">
+          <Card className="relative">
+            {/* 守门模式角标 */}
+            {shareInfo?.gatekeeper && (
+              <div className="absolute top-3 right-3 z-10">
+                <div className="bg-orange-500 text-white px-2 py-1 rounded-full text-xs font-medium shadow-lg flex items-center gap-1">
+                  <Eye className="h-3 w-3" />
+                  Gatekeep
+                </div>
+              </div>
+            )}
+            
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Search className="h-5 w-5" />
-                输入取件码
+                <Package className="h-5 w-5" />
+                文件取件
               </CardTitle>
               <CardDescription>
-                请输入分享者提供的6位数字取件码
+                输入取件码来获取文件
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -245,6 +246,12 @@ export default function PickupPage() {
                         需要登录
                       </Badge>
                     )}
+                    {shareInfo.gatekeeper && (
+                      <Badge variant="outline" className="flex items-center gap-1">
+                        <Eye className="h-3 w-3" />
+                        守门模式
+                      </Badge>
+                    )}
                     <Badge variant="outline">
                       已下载 {shareInfo.accessCount} 次
                     </Badge>
@@ -259,17 +266,29 @@ export default function PickupPage() {
 
                 <Separator />
 
-                {/* 下载按钮 */}
-                <div className="flex justify-center">
-                  <Button
-                    size="lg"
-                    onClick={handleDownload}
-                    disabled={downloading}
-                    className="flex items-center gap-2"
-                  >
-                    <Download className="h-4 w-4" />
-                    {downloading ? "下载中..." : "下载文件"}
-                  </Button>
+                {/* 下载按钮或守门模式提示 */}
+                <div className="flex flex-col items-center gap-3">
+                  {shareInfo.gatekeeper ? (
+                    <div className="text-center space-y-2">
+                      <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                        <Eye className="h-4 w-4" />
+                        <span className="text-sm">此分享启用了守门模式</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        只允许查看文件信息，禁止下载文件内容
+                      </p>
+                    </div>
+                  ) : (
+                    <Button
+                      size="lg"
+                      onClick={handleDownload}
+                      disabled={downloading}
+                      className="flex items-center gap-2"
+                    >
+                      <Download className="h-4 w-4" />
+                      {downloading ? "下载中..." : "下载文件"}
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>

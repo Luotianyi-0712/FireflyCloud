@@ -510,10 +510,11 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
         return { error: "File not found" }
       }
 
-      const { requireLogin, usePickupCode, expiresAt } = body as {
+      const { requireLogin, usePickupCode, expiresAt, gatekeeper } = body as {
         requireLogin: boolean
         usePickupCode: boolean
         expiresAt: number | null
+        gatekeeper?: boolean
       }
 
       const shareId = nanoid()
@@ -535,6 +536,7 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
           expiresAt: expiresAt,
           createdAt: now,
           updatedAt: now,
+          gatekeeper: gatekeeper || false,
         })
 
         logger.info(`创建文件取件码: ${file.originalName} - 用户: ${user.userId} - 取件码: ${pickupCode}`)
@@ -562,6 +564,7 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
           expiresAt: expiresAt,
           createdAt: now,
           updatedAt: now,
+          gatekeeper: gatekeeper || false,
         })
 
         // 自动获取前端域名生成分享URL
@@ -603,6 +606,7 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
           expiresAt: fileShares.expiresAt,
           createdAt: fileShares.createdAt,
           updatedAt: fileShares.updatedAt,
+          gatekeeper: fileShares.gatekeeper,
           fileName: files.originalName,
           fileSize: files.size,
           fileMimeType: files.mimeType,

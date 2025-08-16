@@ -125,11 +125,15 @@ function initializeDatabase() {
         id TEXT PRIMARY KEY,
         file_id TEXT NOT NULL,
         user_id TEXT NOT NULL,
-        share_token TEXT UNIQUE NOT NULL,
+        share_token TEXT UNIQUE,
         pickup_code TEXT,
         require_login INTEGER NOT NULL DEFAULT 0,
+        gatekeeper INTEGER NOT NULL DEFAULT 0,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        access_count INTEGER NOT NULL DEFAULT 0,
         expires_at INTEGER,
         created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
         FOREIGN KEY (file_id) REFERENCES files (id) ON DELETE CASCADE,
         FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
       );
@@ -194,6 +198,88 @@ function initializeDatabase() {
           WHERE usage_count = 0 OR usage_count IS NULL
         `)
         logger.info('下载令牌数据迁移完成')
+      }
+    }
+
+    // 检查并升级 file_shares 表结构
+    const fileSharesExists = sqlite.prepare(`
+      SELECT name FROM sqlite_master
+      WHERE type='table' AND name='file_shares'
+    `).get()
+
+    if (fileSharesExists) {
+      const fileSharesColumns = sqlite.prepare("PRAGMA table_info(file_shares)").all()
+      const hasGatekeeper = fileSharesColumns.some((col: any) => col.name === 'gatekeeper')
+      const hasEnabled = fileSharesColumns.some((col: any) => col.name === 'enabled')
+      const hasAccessCount = fileSharesColumns.some((col: any) => col.name === 'access_count')
+      const hasUpdatedAt = fileSharesColumns.some((col: any) => col.name === 'updated_at')
+
+      if (!hasGatekeeper) {
+        logger.info('添加 gatekeeper 字段到 file_shares 表...')
+        sqlite.exec('ALTER TABLE file_shares ADD COLUMN gatekeeper INTEGER NOT NULL DEFAULT 0')
+        logger.database('ALTER', 'file_shares')
+        logger.info('gatekeeper 字段添加成功')
+      }
+
+      if (!hasEnabled) {
+        logger.info('添加 enabled 字段到 file_shares 表...')
+        sqlite.exec('ALTER TABLE file_shares ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1')
+        logger.database('ALTER', 'file_shares')
+        logger.info('enabled 字段添加成功')
+      }
+
+      if (!hasAccessCount) {
+        logger.info('添加 access_count 字段到 file_shares 表...')
+        sqlite.exec('ALTER TABLE file_shares ADD COLUMN access_count INTEGER NOT NULL DEFAULT 0')
+        logger.database('ALTER', 'file_shares')
+        logger.info('access_count 字段添加成功')
+      }
+
+      if (!hasUpdatedAt) {
+        logger.info('添加 updated_at 字段到 file_shares 表...')
+        sqlite.exec('ALTER TABLE file_shares ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0')
+        logger.database('ALTER', 'file_shares')
+        logger.info('updated_at 字段添加成功')
+        
+        // 更新现有记录的 updated_at 字段
+        sqlite.exec(`UPDATE file_shares SET updated_at = created_at WHERE updated_at = 0`)
+        logger.info('已更新现有记录的 updated_at 字段')
+      }
+
+      // 修复 share_token 字段的 UNIQUE 约束问题
+      const shareTokenColumn = fileSharesColumns.find((col: any) => col.name === 'share_token')
+      if (shareTokenColumn && (shareTokenColumn as any).notnull === 1) {
+        logger.info('修复 share_token 字段约束...')
+        // 由于 SQLite 不支持直接修改列约束，我们需要重建表
+        sqlite.exec(`
+          CREATE TABLE file_shares_new (
+            id TEXT PRIMARY KEY,
+            file_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            share_token TEXT UNIQUE,
+            pickup_code TEXT,
+            require_login INTEGER NOT NULL DEFAULT 0,
+            gatekeeper INTEGER NOT NULL DEFAULT 0,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            access_count INTEGER NOT NULL DEFAULT 0,
+            expires_at INTEGER,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (file_id) REFERENCES files (id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+          );
+          
+          INSERT INTO file_shares_new 
+          SELECT id, file_id, user_id, share_token, pickup_code, require_login, 
+                 COALESCE(gatekeeper, 0), COALESCE(enabled, 1), COALESCE(access_count, 0), 
+                 expires_at, created_at, COALESCE(updated_at, created_at)
+          FROM file_shares;
+          
+          DROP TABLE file_shares;
+          ALTER TABLE file_shares_new RENAME TO file_shares;
+        `)
+        logger.database('REBUILD', 'file_shares')
+        logger.info('file_shares 表结构修复完成')
       }
     }
 
