@@ -249,4 +249,54 @@ export class StorageService {
     logger.info(`生成 R2 公共下载链接: ${key}`)
     return url
   }
+
+  // 新增：下载文件内容
+  async downloadFile(storagePath: string): Promise<Buffer> {
+    logger.debug(`下载文件内容: ${storagePath} (${this.config.storageType})`)
+
+    if (this.config.storageType === "r2" && this.s3Client) {
+      const command = new GetObjectCommand({
+        Bucket: this.config.r2Bucket,
+        Key: storagePath,
+      })
+
+      const response = await this.s3Client.send(command)
+      if (!response.Body) {
+        throw new Error("Empty response body from R2")
+      }
+
+      // Convert stream to buffer
+      const chunks: Uint8Array[] = []
+      
+      // Handle the AWS SDK stream properly
+      if (response.Body instanceof ReadableStream) {
+        const reader = response.Body.getReader()
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          chunks.push(value)
+        }
+      } else {
+        // Handle Node.js Readable stream
+        const stream = response.Body as any
+        for await (const chunk of stream) {
+          chunks.push(chunk)
+        }
+      }
+
+      const buffer = Buffer.concat(chunks)
+      logger.info(`成功从 R2 下载文件: ${storagePath}, 大小: ${buffer.length} bytes`)
+      return buffer
+    } else {
+      // For local storage, read file directly
+      const fs = await import("fs/promises")
+      // 检查 storagePath 是否已经是绝对路径
+      const filePath = path.isAbsolute(storagePath) 
+        ? storagePath 
+        : path.join(process.cwd(), "uploads", storagePath)
+      const buffer = await fs.readFile(filePath)
+      logger.info(`成功从本地读取文件: ${storagePath}, 大小: ${buffer.length} bytes`)
+      return buffer
+    }
+  }
 }

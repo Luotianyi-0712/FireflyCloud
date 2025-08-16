@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { FilePreview } from "./file-preview"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -114,6 +115,8 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
     shareUrl: "",
     pickupCode: null,
   })
+  const [previewFile, setPreviewFile] = useState<FileItem | null>(null)
+  const [previewOpen, setPreviewOpen] = useState(false)
   const { token } = useAuth()
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
@@ -350,6 +353,18 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
     }
   };
 
+  // 处理文件预览
+  const handleFilePreview = (file: FileItem) => {
+    if (file.isR2Folder || file.mimeType === "application/directory") {
+      // 文件夹不支持预览，执行导航
+      handleFolderClick(file);
+    } else {
+      // 打开文件预览
+      setPreviewFile(file);
+      setPreviewOpen(true);
+    }
+  };
+
   // 排序文件，使文件夹显示在前面
   const sortedFiles = [...files].sort((a, b) => {
     const aIsFolder = a.isR2Folder || a.mimeType === "application/directory";
@@ -406,7 +421,12 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
                         {file.originalName}
                       </h4>
                     ) : (
-                      <h4 className="font-medium truncate">{file.originalName}</h4>
+                      <h4 
+                        className="font-medium truncate cursor-pointer hover:text-blue-600 hover:underline" 
+                        onClick={() => handleFilePreview(file)}
+                      >
+                        {file.originalName}
+                      </h4>
                     )}
                     {(file.isR2File || file.isR2Folder) && (
                       <Badge variant="secondary" className="text-xs flex items-center gap-1">
@@ -717,6 +737,13 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 文件预览对话框 */}
+      <FilePreview
+        file={previewFile}
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+      />
     </div>
   )
 }

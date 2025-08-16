@@ -8,6 +8,8 @@ import { eq, and, isNull } from "drizzle-orm"
 import { StorageService } from "../services/storage"
 import { logger } from "../utils/logger"
 import { getBaseUrl, getFrontendUrl } from "../utils/url"
+import * as fs from "fs"
+import * as path from "path"
 
 export const fileRoutes = new Elysia({ prefix: "/files" })
   .use(
@@ -179,6 +181,184 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
       logger.error("生成下载令牌失败:", error)
       set.status = 500
       return { error: "Download token generation failed" }
+    }
+  })
+  // 获取文件内容（用于文本文件预览和编辑）
+  .get("/:id/content", async ({ params, user, set }) => {
+    try {
+      logger.debug(`获取文件内容: ${params.id} - 用户: ${user.userId}`)
+
+      const file = await db
+        .select()
+        .from(files)
+        .where(and(eq(files.id, params.id), eq(files.userId, user.userId)))
+        .get()
+
+      if (!file) {
+        logger.warn(`文件未找到: ${params.id} - 用户: ${user.userId}`)
+        set.status = 404
+        return { error: "File not found" }
+      }
+
+      logger.debug(`文件信息: ${file.originalName}, MIME: ${file.mimeType}, 存储路径: ${file.storagePath}`)
+
+      // 检查是否为文本文件 - 优先基于文件扩展名检测
+      const ext = file.originalName.split('.').pop()?.toLowerCase() || ''
+      const textExtensions = ['txt', 'md', 'json', 'js', 'ts', 'tsx', 'jsx', 'css', 'scss', 'sass', 'less', 'html', 'htm', 'xml', 'yaml', 'yml', 'ini', 'conf', 'config', 'log', 'sql', 'py', 'java', 'cpp', 'c', 'h', 'cs', 'php', 'rb', 'go', 'rs', 'sh', 'bash', 'bat', 'ps1', 'vue', 'svelte', 'astro', 'dockerfile', 'gitignore', 'env', 'toml', 'lock', 'makefile', 'cmake', 'gradle', 'properties', 'cfg', 'rc']
+      
+      const isTextFile = textExtensions.includes(ext) || 
+        file.mimeType.startsWith("text/") || 
+        file.mimeType === "application/json" ||
+        file.mimeType === "application/javascript" ||
+        file.mimeType === "application/xml"
+
+      logger.debug(`文件扩展名: ${ext}, 是否为文本文件: ${isTextFile}`)
+
+      if (!isTextFile) {
+        set.status = 400
+        return { error: "File is not a text file" }
+      }
+
+      const config = await db.select().from(storageConfig).get()
+      if (!config) {
+        logger.error("存储配置未找到")
+        set.status = 500
+        return { error: "Storage not configured" }
+      }
+
+      try {
+        // 读取文件内容
+        const storageService = new StorageService(config)
+        let content = ""
+
+        if (config.storageType === "local") {
+          // 本地存储直接读取文件
+          // 检查 storagePath 是否已经是绝对路径
+          const filePath = path.isAbsolute(file.storagePath) 
+            ? file.storagePath 
+            : path.join(process.cwd(), "uploads", file.storagePath)
+          logger.debug(`尝试读取本地文件: ${filePath}`)
+          
+          if (fs.existsSync(filePath)) {
+            content = fs.readFileSync(filePath, "utf8")
+            logger.debug(`成功读取文件内容，长度: ${content.length} 字符`)
+          } else {
+            logger.error(`本地文件不存在: ${filePath}`)
+            set.status = 404
+            return { error: "File not found on storage" }
+          }
+        } else {
+          // 云存储需要下载文件内容
+          logger.debug(`尝试从云存储下载文件: ${file.storagePath}`)
+          const fileBuffer = await storageService.downloadFile(file.storagePath)
+          content = fileBuffer.toString("utf8")
+          logger.debug(`成功从云存储读取文件内容，长度: ${content.length} 字符`)
+        }
+
+        logger.info(`获取文件内容成功: ${file.originalName} - 用户: ${user.userId}, 内容长度: ${content.length}`)
+        
+        // 直接返回文本内容，设置正确的Content-Type
+        set.headers["Content-Type"] = "text/plain; charset=utf-8"
+        return content
+      } catch (error) {
+        logger.error("读取文件内容失败:", error)
+        set.status = 500
+        return { error: "Failed to read file content" }
+      }
+    } catch (error) {
+      logger.error("获取文件内容失败:", error)
+      set.status = 500
+      return { error: "Get file content failed" }
+    }
+  })
+  // 保存文件内容（用于文本文件编辑）
+  .put("/:id/content", async ({ params, user, set, body }) => {
+    try {
+      logger.debug(`保存文件内容: ${params.id} - 用户: ${user.userId}`)
+
+      const file = await db
+        .select()
+        .from(files)
+        .where(and(eq(files.id, params.id), eq(files.userId, user.userId)))
+        .get()
+
+      if (!file) {
+        logger.warn(`文件未找到: ${params.id} - 用户: ${user.userId}`)
+        set.status = 404
+        return { error: "File not found" }
+      }
+
+      // 检查是否为文本文件 - 优先基于文件扩展名检测
+      const ext = file.originalName.split('.').pop()?.toLowerCase() || ''
+      const textExtensions = ['txt', 'md', 'json', 'js', 'ts', 'tsx', 'jsx', 'css', 'scss', 'sass', 'less', 'html', 'htm', 'xml', 'yaml', 'yml', 'ini', 'conf', 'config', 'log', 'sql', 'py', 'java', 'cpp', 'c', 'h', 'cs', 'php', 'rb', 'go', 'rs', 'sh', 'bash', 'bat', 'ps1', 'vue', 'svelte', 'astro', 'dockerfile', 'gitignore', 'env', 'toml', 'lock', 'makefile', 'cmake', 'gradle', 'properties', 'cfg', 'rc']
+      
+      const isTextFile = textExtensions.includes(ext) || 
+        file.mimeType.startsWith("text/") || 
+        file.mimeType === "application/json" ||
+        file.mimeType === "application/javascript" ||
+        file.mimeType === "application/xml"
+
+      if (!isTextFile) {
+        set.status = 400
+        return { error: "File is not a text file" }
+      }
+
+      const config = await db.select().from(storageConfig).get()
+      if (!config) {
+        logger.error("存储配置未找到")
+        set.status = 500
+        return { error: "Storage not configured" }
+      }
+
+      try {
+        const content = typeof body === 'string' ? body : String(body)
+        const contentBuffer = Buffer.from(content, 'utf8')
+        
+        // 保存文件内容
+        const storageService = new StorageService(config)
+
+        if (config.storageType === "local") {
+          // 本地存储直接写入文件
+          const filePath = path.join(process.cwd(), "uploads", file.storagePath)
+          const dir = path.dirname(filePath)
+          
+          // 确保目录存在
+          if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true })
+          }
+          
+          fs.writeFileSync(filePath, content, "utf8")
+        } else {
+          // 云存储上传文件
+          await storageService.uploadFile(contentBuffer, file.storagePath, file.mimeType)
+        }
+
+        // 更新文件大小
+        const newSize = Buffer.byteLength(content, 'utf8')
+        await db
+          .update(files)
+          .set({ 
+            size: newSize,
+            createdAt: Date.now() // 更新修改时间
+          })
+          .where(eq(files.id, params.id))
+
+        logger.info(`保存文件内容成功: ${file.originalName} - 用户: ${user.userId} - 新大小: ${newSize}`)
+        
+        return { 
+          success: true, 
+          size: newSize,
+          message: "File content saved successfully" 
+        }
+      } catch (error) {
+        logger.error("保存文件内容失败:", error)
+        set.status = 500
+        return { error: "Failed to save file content" }
+      }
+    } catch (error) {
+      logger.error("保存文件内容失败:", error)
+      set.status = 500
+      return { error: "Save file content failed" }
     }
   })
   // 获取文件直链
