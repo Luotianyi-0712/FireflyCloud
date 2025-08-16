@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>配额系统测试</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .quota-card {
+            background: #f8f9fa;
+            padding: 16px;
+            border-radius: 6px;
+            border-left: 4px solid #007bff;
+        }
+        .quota-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+        .quota-label {
+            font-size: 14px;
+            color: #666;
+            margin-top: 4px;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 8px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .error {
+            color: #dc3545;
+            background: #f8d7da;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success {
+            color: #155724;
+            background: #d4edda;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .warning {
+            color: #856404;
+            background: #fff3cd;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        input, select {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .form-group {
+            margin: 15px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 用户配额系统测试</h1>
+    
+    <div class="card">
+        <h2>测试配置</h2>
+        <div class="form-group">
+            <label for="apiUrl">API 地址:</label>
+            <input type="text" id="apiUrl" value="http://localhost:8080">
+        </div>
+        <div class="form-group">
+            <label for="token">用户Token:</label>
+            <input type="password" id="token" placeholder="输入用户JWT Token">
+        </div>
+        <div class="form-group">
+            <label for="adminToken">管理员Token:</label>
+            <input type="password" id="adminToken" placeholder="输入管理员JWT Token">
+        </div>
+        <button onclick="testUserQuota()">测试用户配额</button>
+        <button onclick="testAdminQuotas()">测试管理员配额管理</button>
+        <button onclick="testRoleConfigs()">测试角色配额配置</button>
+        <button onclick="clearResults()">清除结果</button>
+    </div>
+
+    <div id="results"></div>
+
+    <script>
+        function formatFileSize(bytes) {
+            if (bytes === 0) return "0 字节";
+            const k = 1024;
+            const sizes = ["字节", "KB", "MB", "GB", "TB"];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Number.parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+        }
+
+        function getUsageColor(percentage) {
+            if (percentage >= 90) return "#dc3545";
+            if (percentage >= 75) return "#ffc107";
+            return "#28a745";
+        }
+
+        async function testUserQuota() {
+            const apiUrl = document.getElementById('apiUrl').value;
+            const token = document.getElementById('token').value;
+            const resultsDiv = document.getElementById('results');
+
+            if (!token) {
+                resultsDiv.innerHTML = '<div class="error">请输入用户Token</div>';
+                return;
+            }
+
+            try {
+                resultsDiv.innerHTML = '<div>正在获取用户配额信息...</div>';
+
+                const response = await fetch(`${apiUrl}/auth/quota`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                const quota = data.quota;
+                
+                resultsDiv.innerHTML = `
+                    <div class="card">
+                        <h2>✅ 用户配额信息</h2>
+                        
+                        <div class="grid">
+                            <div class="quota-card">
+                                <div class="quota-value">${quota.maxStorageFormatted}</div>
+                                <div class="quota-label">总容量</div>
+                            </div>
+                            
+                            <div class="quota-card">
+                                <div class="quota-value">${quota.usedStorageFormatted}</div>
+                                <div class="quota-label">已使用</div>
+                            </div>
+                            
+                            <div class="quota-card">
+                                <div class="quota-value">${quota.availableSpaceFormatted}</div>
+                                <div class="quota-label">可用空间</div>
+                            </div>
+                            
+                            <div class="quota-card">
+                                <div class="quota-value" style="color: ${getUsageColor(quota.usagePercentage)}">${quota.usagePercentage}%</div>
+                                <div class="quota-label">使用率</div>
+                            </div>
+                        </div>
+
+                        <h3>使用情况可视化</h3>
+                        <div style="margin: 20px 0;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                <span>存储使用率</span>
+                                <span style="font-weight: bold; color: ${getUsageColor(quota.usagePercentage)}">${quota.usagePercentage}%</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: ${quota.usagePercentage}%; background-color: ${getUsageColor(quota.usagePercentage)};"></div>
+                            </div>
+                            <div style="font-size: 12px; color: #666; margin-top: 8px;">
+                                💡 配额包括本地存储和R2存储的总和
+                            </div>
+                        </div>
+
+                        ${quota.usagePercentage >= 95 ? 
+                            '<div class="error">⚠️ 存储空间即将用完！请清理不需要的文件。</div>' : 
+                            quota.usagePercentage >= 85 ? 
+                            '<div class="warning">⚠️ 存储空间使用率较高，建议及时清理文件。</div>' :
+                            '<div class="success">✅ 存储空间充足</div>'
+                        }
+
+                        <h3>原始数据</h3>
+                        <pre style="background: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 12px;">${JSON.stringify(quota, null, 2)}</pre>
+                    </div>
+                `;
+
+            } catch (error) {
+                resultsDiv.innerHTML = `
+                    <div class="error">
+                        <h3>❌ 测试失败</h3>
+                        <p><strong>错误信息:</strong> ${error.message}</p>
+                        <p><strong>可能原因:</strong></p>
+                        <ul>
+                            <li>API服务器未启动</li>
+                            <li>Token无效或已过期</li>
+                            <li>用户配额记录不存在</li>
+                            <li>CORS配置问题</li>
+                        </ul>
+                    </div>
+                `;
+            }
+        }
+
+        async function testAdminQuotas() {
+            const apiUrl = document.getElementById('apiUrl').value;
+            const adminToken = document.getElementById('adminToken').value;
+            const resultsDiv = document.getElementById('results');
+
+            if (!adminToken) {
+                resultsDiv.innerHTML = '<div class="error">请输入管理员Token</div>';
+                return;
+            }
+
+            try {
+                resultsDiv.innerHTML = '<div>正在获取所有用户配额信息...</div>';
+
+                const response = await fetch(`${apiUrl}/admin/user-quotas`, {
+                    headers: {
+                        'Authorization': `Bearer ${adminToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                const quotas = data.quotas || [];
+                
+                let quotaRows = '';
+                quotas.forEach(quota => {
+                    const usagePercentage = Math.round((quota.usedStorage / quota.maxStorage) * 100);
+                    const effectiveQuota = quota.customQuota || quota.maxStorage;
+                    
+                    quotaRows += `
+                        <tr>
+                            <td>${quota.userEmail}</td>
+                            <td><span style="background: ${quota.role === 'admin' ? '#007bff' : '#6c757d'}; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">${quota.role === 'admin' ? '管理员' : '用户'}</span></td>
+                            <td>${formatFileSize(effectiveQuota)}${quota.customQuota ? ' (自定义)' : ''}</td>
+                            <td>${formatFileSize(quota.usedStorage)}</td>
+                            <td>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <div class="progress-bar" style="flex: 1; height: 6px;">
+                                        <div class="progress-fill" style="width: ${usagePercentage}%; background-color: ${getUsageColor(usagePercentage)};"></div>
+                                    </div>
+                                    <span style="font-size: 12px; color: ${getUsageColor(usagePercentage)}">${usagePercentage}%</span>
+                                </div>
+                            </td>
+                            <td style="font-size: 12px; color: #666;">${new Date(quota.updatedAt).toLocaleString('zh-CN')}</td>
+                        </tr>
+                    `;
+                });
+                
+                resultsDiv.innerHTML = `
+                    <div class="card">
+                        <h2>✅ 所有用户配额信息</h2>
+                        <p>共找到 ${quotas.length} 个用户配额记录</p>
+                        
+                        <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+                            <thead>
+                                <tr style="background: #f8f9fa;">
+                                    <th style="padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6;">用户</th>
+                                    <th style="padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6;">角色</th>
+                                    <th style="padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6;">配额</th>
+                                    <th style="padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6;">已使用</th>
+                                    <th style="padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6;">使用率</th>
+                                    <th style="padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6;">更新时间</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${quotaRows}
+                            </tbody>
+                        </table>
+
+                        <h3>原始数据</h3>
+                        <pre style="background: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 12px;">${JSON.stringify(quotas, null, 2)}</pre>
+                    </div>
+                `;
+
+            } catch (error) {
+                resultsDiv.innerHTML = `
+                    <div class="error">
+                        <h3>❌ 测试失败</h3>
+                        <p><strong>错误信息:</strong> ${error.message}</p>
+                        <p><strong>可能原因:</strong></p>
+                        <ul>
+                            <li>API服务器未启动</li>
+                            <li>管理员Token无效或已过期</li>
+                            <li>没有管理员权限</li>
+                            <li>数据库配额表不存在</li>
+                        </ul>
+                    </div>
+                `;
+            }
+        }
+
+        async function testRoleConfigs() {
+            const apiUrl = document.getElementById('apiUrl').value;
+            const adminToken = document.getElementById('adminToken').value;
+            const resultsDiv = document.getElementById('results');
+
+            if (!adminToken) {
+                resultsDiv.innerHTML = '<div class="error">请输入管理员Token</div>';
+                return;
+            }
+
+            try {
+                resultsDiv.innerHTML = '<div>正在获取角色配额配置...</div>';
+
+                const response = await fetch(`${apiUrl}/admin/role-quota-config`, {
+                    headers: {
+                        'Authorization': `Bearer ${adminToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                const configs = data.configs || [];
+                
+                let configCards = '';
+                configs.forEach(config => {
+                    configCards += `
+                        <div class="quota-card">
+                            <div class="quota-value">${formatFileSize(config.defaultQuota)}</div>
+                            <div class="quota-label">${config.role === 'admin' ? '👑 管理员' : '👤 普通用户'}</div>
+                            <div style="font-size: 12px; color: #666; margin-top: 8px;">${config.description || '默认配额'}</div>
+                            <div style="font-size: 10px; color: #999; margin-top: 4px;">更新时间: ${new Date(config.updatedAt).toLocaleString('zh-CN')}</div>
+                        </div>
+                    `;
+                });
+                
+                resultsDiv.innerHTML = `
+                    <div class="card">
+                        <h2>✅ 角色配额配置</h2>
+                        <p>共找到 ${configs.length} 个角色配置</p>
+                        
+                        <div class="grid">
+                            ${configCards}
+                        </div>
+
+                        <h3>原始数据</h3>
+                        <pre style="background: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 12px;">${JSON.stringify(configs, null, 2)}</pre>
+                    </div>
+                `;
+
+            } catch (error) {
+                resultsDiv.innerHTML = `
+                    <div class="error">
+                        <h3>❌ 测试失败</h3>
+                        <p><strong>错误信息:</strong> ${error.message}</p>
+                        <p><strong>可能原因:</strong></p>
+                        <ul>
+                            <li>API服务器未启动</li>
+                            <li>管理员Token无效或已过期</li>
+                            <li>没有管理员权限</li>
+                            <li>角色配额配置表不存在</li>
+                        </ul>
+                    </div>
+                `;
+            }
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        // 页面加载时的提示
+        window.onload = function() {
+            document.getElementById('results').innerHTML = `
+                <div class="card">
+                    <h3>📋 使用说明</h3>
+                    <ol>
+                        <li>确保后端服务器正在运行 (默认: http://localhost:8080)</li>
+                        <li>使用用户账户登录获取用户JWT Token</li>
+                        <li>使用管理员账户登录获取管理员JWT Token</li>
+                        <li>将Token粘贴到对应的输入框中</li>
+                        <li>点击相应的测试按钮</li>
+                    </ol>
+                    
+                    <h4>🎯 测试功能</h4>
+                    <ul>
+                        <li><strong>测试用户配额</strong>: 验证用户配额API是否正常工作</li>
+                        <li><strong>测试管理员配额管理</strong>: 验证管理员查看所有用户配额的功能</li>
+                        <li><strong>测试角色配额配置</strong>: 验证角色默认配额配置功能</li>
+                    </ul>
+                    
+                    <h4>🔍 验证重点</h4>
+                    <ul>
+                        <li>配额信息是否正确显示</li>
+                        <li>使用率计算是否准确</li>
+                        <li>管理员权限是否正常</li>
+                        <li>数据库初始化是否成功</li>
+                    </ul>
+                </div>
+            `;
+        };
+    </script>
+</body>
+</html>

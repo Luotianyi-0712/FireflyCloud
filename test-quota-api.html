@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>配额API测试</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .config {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        .config input {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .button:hover {
+            background: #0056b3;
+        }
+        .result {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        .success {
+            background: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        .quota-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #007bff;
+            margin: 10px 0;
+        }
+        .quota-card h4 {
+            margin: 0 0 10px 0;
+            color: #495057;
+        }
+        .quota-value {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #007bff;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 配额API测试工具</h1>
+    
+    <div class="container">
+        <h2>配置</h2>
+        <div class="config">
+            <label>API 地址:</label>
+            <input type="text" id="apiUrl" value="http://localhost:8080" placeholder="http://localhost:8080">
+            
+            <label>用户 Token:</label>
+            <input type="text" id="userToken" placeholder="用户JWT Token">
+        </div>
+        
+        <button class="button" onclick="testUserQuota()">测试用户配额API</button>
+        <button class="button" onclick="testQuotaDebug()">调试配额计算</button>
+        <button class="button" onclick="testUserFiles()">查看用户文件列表</button>
+        <button class="button" onclick="clearResults()">清除结果</button>
+    </div>
+
+    <div class="container">
+        <h2>测试结果</h2>
+        <div id="results"></div>
+    </div>
+
+    <script>
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function addResult(title, content, type = 'info') {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `result ${type}`;
+            div.innerHTML = `<strong>${title}</strong>\n${content}`;
+            results.appendChild(div);
+            results.scrollTop = results.scrollHeight;
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        async function makeRequest(endpoint, options = {}) {
+            const apiUrl = document.getElementById('apiUrl').value;
+            const userToken = document.getElementById('userToken').value;
+            
+            const response = await fetch(`${apiUrl}${endpoint}`, {
+                ...options,
+                headers: {
+                    'Authorization': `Bearer ${userToken}`,
+                    'Content-Type': 'application/json',
+                    ...options.headers
+                }
+            });
+            
+            const data = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${data.error || '请求失败'}`);
+            }
+            
+            return data;
+        }
+
+        async function testUserQuota() {
+            try {
+                addResult('🔍 开始测试用户配额API...', '调用 /auth/quota');
+
+                const quotaData = await makeRequest('/auth/quota');
+
+                if (quotaData.quota) {
+                    const quota = quotaData.quota;
+
+                    let result = '=== 用户配额信息 ===\n';
+                    result += `最大存储: ${quota.maxStorageFormatted} (${quota.maxStorage} 字节)\n`;
+                    result += `已用存储: ${quota.usedStorageFormatted} (${quota.usedStorage} 字节)\n`;
+                    result += `可用空间: ${quota.availableSpaceFormatted} (${quota.availableSpace} 字节)\n`;
+                    result += `使用率: ${quota.usagePercentage}%\n`;
+
+                    addResult('✅ 配额API调用成功', result, 'success');
+
+                    // 创建可视化卡片
+                    const quotaCard = document.createElement('div');
+                    quotaCard.className = 'quota-card';
+                    quotaCard.innerHTML = `
+                        <h4>📊 配额使用情况</h4>
+                        <div>已用: <span class="quota-value">${quota.usedStorageFormatted}</span></div>
+                        <div>总量: <span class="quota-value">${quota.maxStorageFormatted}</span></div>
+                        <div>使用率: <span class="quota-value">${quota.usagePercentage}%</span></div>
+                    `;
+                    document.getElementById('results').appendChild(quotaCard);
+
+                } else {
+                    addResult('❌ 配额数据为空', JSON.stringify(quotaData, null, 2), 'error');
+                }
+
+            } catch (error) {
+                addResult('❌ 配额API测试失败', error.message, 'error');
+            }
+        }
+
+        async function testQuotaDebug() {
+            try {
+                addResult('🔍 开始调试配额计算...', '调用 /auth/quota-debug');
+
+                const debugData = await makeRequest('/auth/quota-debug');
+
+                let result = '=== 配额调试信息 ===\n';
+                result += `用户ID: ${debugData.userId}\n`;
+                result += `文件总数: ${debugData.fileCount}\n\n`;
+
+                result += '=== 计算的存储使用量 ===\n';
+                result += `本地存储: ${formatFileSize(debugData.calculatedUsage.localStorage)} (${debugData.calculatedUsage.localCount} 文件)\n`;
+                result += `R2实际存储: ${formatFileSize(debugData.calculatedUsage.r2ActualStorage)} (${debugData.calculatedUsage.r2ActualFiles} 文件)\n`;
+                if (debugData.calculatedUsage.r2StorageError) {
+                    result += `R2查询错误: ${debugData.calculatedUsage.r2StorageError}\n`;
+                }
+                result += `总计: ${formatFileSize(debugData.calculatedUsage.totalUsed)}\n\n`;
+
+                if (debugData.databaseQuota) {
+                    result += '=== 数据库配额记录 ===\n';
+                    result += `已用存储: ${formatFileSize(debugData.databaseQuota.usedStorage)}\n`;
+                    result += `最大存储: ${formatFileSize(debugData.databaseQuota.maxStorage)}\n`;
+                    result += `自定义配额: ${debugData.databaseQuota.customQuota ? formatFileSize(debugData.databaseQuota.customQuota) : '无'}\n\n`;
+
+                    result += `数据一致性: ${debugData.isConsistent ? '✅ 一致' : '❌ 不一致'}\n`;
+
+                    if (!debugData.isConsistent) {
+                        const diff = debugData.calculatedUsage.totalUsed - debugData.databaseQuota.usedStorage;
+                        result += `差异: ${formatFileSize(Math.abs(diff))} (${diff > 0 ? '实际更大' : '数据库更大'})\n`;
+                    }
+                } else {
+                    result += '=== 数据库配额记录 ===\n';
+                    result += '❌ 未找到配额记录\n';
+                }
+
+                result += '\n=== 文件详情 ===\n';
+                debugData.files.forEach((file, index) => {
+                    result += `${index + 1}. ${file.name} - ${formatFileSize(file.size)} (${file.storageType})\n`;
+                });
+
+                addResult('✅ 配额调试完成', result, debugData.isConsistent ? 'success' : 'error');
+
+                // 创建对比卡片
+                const comparisonCard = document.createElement('div');
+                comparisonCard.className = 'quota-card';
+                comparisonCard.style.borderLeftColor = debugData.isConsistent ? '#28a745' : '#dc3545';
+                comparisonCard.innerHTML = `
+                    <h4>🔍 配额数据对比</h4>
+                    <div>实际计算: <span class="quota-value">${formatFileSize(debugData.calculatedUsage.totalUsed)}</span></div>
+                    <div>数据库记录: <span class="quota-value">${debugData.databaseQuota ? formatFileSize(debugData.databaseQuota.usedStorage) : '无记录'}</span></div>
+                    <div>状态: <span class="quota-value" style="color: ${debugData.isConsistent ? '#28a745' : '#dc3545'}">${debugData.isConsistent ? '一致' : '不一致'}</span></div>
+                `;
+                document.getElementById('results').appendChild(comparisonCard);
+
+            } catch (error) {
+                addResult('❌ 配额调试失败', error.message, 'error');
+            }
+        }
+
+        async function testUserFiles() {
+            try {
+                addResult('🔍 开始查看用户文件...', '调用 /files');
+                
+                const filesData = await makeRequest('/files');
+                
+                if (filesData.files) {
+                    const files = filesData.files;
+                    
+                    let result = '=== 用户文件列表 ===\n';
+                    result += `文件总数: ${files.length}\n\n`;
+                    
+                    let totalLocalSize = 0;
+                    let totalR2Size = 0;
+                    let localCount = 0;
+                    let r2Count = 0;
+                    
+                    files.forEach((file, index) => {
+                        result += `${index + 1}. ${file.originalName}\n`;
+                        result += `   大小: ${formatFileSize(file.size)} (${file.size} 字节)\n`;
+                        result += `   存储类型: ${file.storageType}\n`;
+                        result += `   MIME类型: ${file.mimeType}\n`;
+                        result += `   创建时间: ${new Date(file.createdAt).toLocaleString()}\n\n`;
+                        
+                        if (file.storageType === 'local') {
+                            totalLocalSize += file.size;
+                            localCount++;
+                        } else if (file.storageType === 'r2') {
+                            totalR2Size += file.size;
+                            r2Count++;
+                        }
+                    });
+                    
+                    const totalSize = totalLocalSize + totalR2Size;
+                    
+                    result += '=== 存储统计 ===\n';
+                    result += `本地存储: ${formatFileSize(totalLocalSize)} (${localCount} 文件)\n`;
+                    result += `R2存储: ${formatFileSize(totalR2Size)} (${r2Count} 文件)\n`;
+                    result += `总计: ${formatFileSize(totalSize)} (${files.length} 文件)\n`;
+                    
+                    addResult('✅ 文件列表获取成功', result, 'success');
+                    
+                    // 创建存储统计卡片
+                    const storageCard = document.createElement('div');
+                    storageCard.className = 'quota-card';
+                    storageCard.style.borderLeftColor = '#28a745';
+                    storageCard.innerHTML = `
+                        <h4>💾 实际存储使用量</h4>
+                        <div>本地存储: <span class="quota-value">${formatFileSize(totalLocalSize)}</span> (${localCount} 文件)</div>
+                        <div>R2存储: <span class="quota-value">${formatFileSize(totalR2Size)}</span> (${r2Count} 文件)</div>
+                        <div>总计: <span class="quota-value">${formatFileSize(totalSize)}</span> (${files.length} 文件)</div>
+                    `;
+                    document.getElementById('results').appendChild(storageCard);
+                    
+                } else {
+                    addResult('❌ 文件数据为空', JSON.stringify(filesData, null, 2), 'error');
+                }
+                
+            } catch (error) {
+                addResult('❌ 文件列表获取失败', error.message, 'error');
+            }
+        }
+
+        // 页面加载时的提示
+        window.onload = function() {
+            addResult('📋 使用说明',
+                '1. 输入API地址和用户Token\n' +
+                '2. 点击"调试配额计算"查看详细的配额计算过程\n' +
+                '3. 点击"测试用户配额API"查看前端实际获取的配额信息\n' +
+                '4. 点击"查看用户文件列表"查看实际文件存储情况\n' +
+                '5. 对比结果，验证配额计算是否正确\n\n' +
+                '🔍 调试配额计算功能会显示：\n' +
+                '- 实际计算的本地存储+R2存储总和\n' +
+                '- 数据库中记录的配额使用量\n' +
+                '- 数据一致性检查结果\n' +
+                '- 所有文件的详细信息\n\n' +
+                '如果显示"不一致"，说明后端配额计算有问题。'
+            );
+        };
+    </script>
+</body>
+</html>

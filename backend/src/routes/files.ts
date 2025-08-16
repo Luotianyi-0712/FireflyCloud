@@ -6,6 +6,7 @@ import { db } from "../db"
 import { files, storageConfig, folders, downloadTokens, fileDirectLinks, fileShares } from "../db/schema"
 import { eq, and, isNull } from "drizzle-orm"
 import { StorageService } from "../services/storage"
+import { QuotaService } from "../services/quota"
 import { logger } from "../utils/logger"
 import { getBaseUrl, getFrontendUrl } from "../utils/url"
 import * as fs from "fs"
@@ -31,22 +32,26 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
       throw new Error("Invalid token")
     }
 
-    return { user: payload }
+    return { user: payload as { userId: string; email: string; role: string } }
   })
   .get("/", async ({ user, query }) => {
     logger.debug(`获取用户文件列表: ${user.userId}`)
 
-    let fileQuery = db.select().from(files).where(eq(files.userId, user.userId))
+    // 构建查询条件
+    let whereConditions = [eq(files.userId, user.userId)]
 
-    // 如果指定了文件夹ID，只获取该文件夹下的文件
+    // 如果指定了文件夹ID，添加文件夹过滤条件
     if (query.folderId !== undefined) {
       const folderId = query.folderId === "root" ? null : query.folderId
-      fileQuery = fileQuery.where(
+      whereConditions.push(
         folderId ? eq(files.folderId, folderId) : isNull(files.folderId)
       )
     }
 
-    const userFiles = await fileQuery
+    const userFiles = await db
+      .select()
+      .from(files)
+      .where(and(...whereConditions))
     logger.info(`用户 ${user.userId} 获取了 ${userFiles.length} 个文件`)
     return { files: userFiles }
   })
@@ -87,6 +92,22 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
           return { error: "Storage not configured" }
         }
 
+        // 检查用户配额
+        const quotaCheck = await QuotaService.checkUserQuota(user.userId, file.size)
+        if (!quotaCheck.allowed) {
+          logger.warn(`用户 ${user.userId} 配额不足: 需要 ${file.size} 字节, 可用 ${quotaCheck.availableSpace} 字节`)
+          set.status = 413 // Payload Too Large
+          return {
+            error: "Storage quota exceeded",
+            details: {
+              fileSize: file.size,
+              currentUsed: quotaCheck.currentUsed,
+              maxStorage: quotaCheck.maxStorage,
+              availableSpace: quotaCheck.availableSpace
+            }
+          }
+        }
+
         const storageService = new StorageService(config)
         const fileId = nanoid()
         const filename = `${fileId}-${file.name}`
@@ -94,6 +115,9 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
         // Upload file
         const storagePath = await storageService.uploadFile(file, filename)
         logger.file('UPLOAD', file.name, file.size, true)
+
+        // 更新用户存储使用量
+        await QuotaService.updateUserStorage(user.userId, file.size)
 
         // Save to database
         await db.insert(files).values({
@@ -125,7 +149,7 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
         }
       } catch (error) {
         logger.error("文件上传失败:", error)
-        logger.file('UPLOAD', body?.file?.name || 'unknown', body?.file?.size, false, error)
+        logger.file('UPLOAD', body?.file?.name || 'unknown', body?.file?.size, false, error instanceof Error ? error : undefined)
         set.status = 500
         return { error: "Upload failed" }
       }
@@ -321,34 +345,46 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
           // 本地存储直接写入文件
           const filePath = path.join(process.cwd(), "uploads", file.storagePath)
           const dir = path.dirname(filePath)
-          
+
           // 确保目录存在
           if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true })
           }
-          
+
           fs.writeFileSync(filePath, content, "utf8")
         } else {
-          // 云存储上传文件
-          await storageService.uploadFile(contentBuffer, file.storagePath, file.mimeType)
+          // R2存储需要重新上传文件
+          // 创建一个临时File对象
+          const blob = new Blob([contentBuffer], { type: file.mimeType })
+          const tempFile = new File([blob], file.originalName, { type: file.mimeType })
+          await storageService.uploadFile(tempFile, file.storagePath)
         }
 
         // 更新文件大小
         const newSize = Buffer.byteLength(content, 'utf8')
+        const oldSize = file.size
+        const sizeChange = newSize - oldSize
+
         await db
           .update(files)
-          .set({ 
+          .set({
             size: newSize,
             createdAt: Date.now() // 更新修改时间
           })
           .where(eq(files.id, params.id))
 
-        logger.info(`保存文件内容成功: ${file.originalName} - 用户: ${user.userId} - 新大小: ${newSize}`)
-        
-        return { 
-          success: true, 
+        // 如果文件大小发生变化，更新用户配额
+        if (sizeChange !== 0) {
+          await QuotaService.updateUserStorage(user.userId, sizeChange)
+          logger.info(`文件大小变化，更新配额: ${user.userId} - 变化: ${sizeChange} 字节`)
+        }
+
+        logger.info(`保存文件内容成功: ${file.originalName} - 用户: ${user.userId} - 大小: ${oldSize} -> ${newSize}`)
+
+        return {
+          success: true,
           size: newSize,
-          message: "File content saved successfully" 
+          message: "File content saved successfully"
         }
       } catch (error) {
         logger.error("保存文件内容失败:", error)
@@ -589,7 +625,7 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
     }
   })
   // 获取用户的分享列表
-  .get("/shares", async ({ user }) => {
+  .get("/shares", async ({ user, set }) => {
     try {
       logger.debug(`获取用户分享列表: ${user.userId}`)
 
@@ -760,6 +796,9 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
       await storageService.deleteFile(file.storagePath)
       logger.file('DELETE', file.originalName, file.size, true)
 
+      // 更新用户存储使用量（减少文件大小）
+      await QuotaService.updateUserStorage(user.userId, -file.size)
+
       await db.delete(files).where(eq(files.id, params.id))
       logger.database('DELETE', 'files')
 
@@ -767,7 +806,7 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
       return { message: "File deleted successfully" }
     } catch (error) {
       logger.error("文件删除失败:", error)
-      logger.file('DELETE', 'unknown', 0, false, error)
+      logger.file('DELETE', 'unknown', 0, false, error instanceof Error ? error : undefined)
       set.status = 500
       return { error: "Delete failed" }
     }

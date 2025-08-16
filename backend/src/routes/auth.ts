@@ -7,6 +7,7 @@ import { db } from "../db"
 import { users, emailVerificationCodes, smtpConfig } from "../db/schema"
 import { eq, and, gt } from "drizzle-orm"
 import { sendVerificationEmail, generateVerificationCode } from "../services/email"
+import { QuotaService } from "../services/quota"
 import { logger } from "../utils/logger"
 
 // 检查 SMTP 是否启用的辅助函数
@@ -286,5 +287,160 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
     } catch (error) {
       set.status = 401
       return { error: "Authentication failed" }
+    }
+  })
+  .get("/quota", async ({ jwt, bearer, set }) => {
+    try {
+      if (!bearer) {
+        set.status = 401
+        return { error: "No token provided" }
+      }
+
+      const payload = await jwt.verify(bearer)
+      if (!payload) {
+        set.status = 401
+        return { error: "Invalid token" }
+      }
+
+      // 获取用户配额信息
+      const quota = await QuotaService.getUserQuota(payload.userId)
+      if (!quota) {
+        // 如果没有配额记录，尝试创建一个
+        const user = await db.select().from(users).where(eq(users.id, payload.userId)).get()
+        if (user) {
+          await QuotaService.createUserQuota(payload.userId, user.role)
+          const newQuota = await QuotaService.getUserQuota(payload.userId)
+          if (newQuota) {
+            return {
+              quota: {
+                maxStorage: newQuota.maxStorage,
+                usedStorage: newQuota.usedStorage,
+                availableSpace: newQuota.availableSpace,
+                usagePercentage: QuotaService.getUsagePercentage(newQuota.usedStorage, newQuota.maxStorage),
+                maxStorageFormatted: QuotaService.formatFileSize(newQuota.maxStorage),
+                usedStorageFormatted: QuotaService.formatFileSize(newQuota.usedStorage),
+                availableSpaceFormatted: QuotaService.formatFileSize(newQuota.availableSpace),
+              }
+            }
+          }
+        }
+
+        set.status = 404
+        return { error: "Quota not found" }
+      }
+
+      return {
+        quota: {
+          maxStorage: quota.maxStorage,
+          usedStorage: quota.usedStorage,
+          availableSpace: quota.availableSpace,
+          usagePercentage: QuotaService.getUsagePercentage(quota.usedStorage, quota.maxStorage),
+          maxStorageFormatted: QuotaService.formatFileSize(quota.maxStorage),
+          usedStorageFormatted: QuotaService.formatFileSize(quota.usedStorage),
+          availableSpaceFormatted: QuotaService.formatFileSize(quota.availableSpace),
+        }
+      }
+    } catch (error) {
+      logger.error("获取用户配额失败:", error)
+      set.status = 500
+      return { error: "Failed to get quota" }
+    }
+  })
+  .get("/quota-debug", async ({ jwt, bearer, set }) => {
+    try {
+      if (!bearer) {
+        set.status = 401
+        return { error: "No token provided" }
+      }
+
+      const payload = await jwt.verify(bearer)
+      if (!payload) {
+        set.status = 401
+        return { error: "Invalid token" }
+      }
+
+      logger.info(`调试配额信息: 用户 ${payload.userId}`)
+
+      // 获取用户所有文件
+      const userFiles = await db
+        .select()
+        .from(files)
+        .where(eq(files.userId, payload.userId))
+        .all()
+
+      // 计算本地存储使用量（数据库中storageType='local'的文件）
+      let localStorage = 0
+      let localCount = 0
+
+      const fileDetails = userFiles.map(file => {
+        if (file.storageType === 'local') {
+          localStorage += file.size
+          localCount++
+        }
+
+        return {
+          id: file.id,
+          name: file.originalName,
+          size: file.size,
+          storageType: file.storageType,
+          createdAt: file.createdAt
+        }
+      })
+
+      // 获取R2实际存储使用量
+      let r2ActualStorage = 0
+      let r2ActualFiles = 0
+      let r2StorageError: string | undefined
+
+      const config = await db.select().from(storageConfig).get()
+      if (config && (config.storageType === "r2" || config.enableMixedMode) && config.r2Endpoint) {
+        try {
+          const { StorageService } = await import("../services/storage")
+          const storageService = new StorageService(config)
+          const r2Stats = await storageService.calculateR2StorageUsage()
+
+          if (!r2Stats.error) {
+            r2ActualStorage = r2Stats.totalSize
+            r2ActualFiles = r2Stats.totalFiles
+          } else {
+            r2StorageError = r2Stats.error
+          }
+        } catch (error) {
+          r2StorageError = error instanceof Error ? error.message : "Unknown error"
+        }
+      }
+
+      const totalUsed = localStorage + r2ActualStorage
+
+      // 获取数据库中的配额记录
+      const quota = await db
+        .select()
+        .from(userQuotas)
+        .where(eq(userQuotas.userId, payload.userId))
+        .get()
+
+      return {
+        userId: payload.userId,
+        fileCount: userFiles.length,
+        files: fileDetails,
+        calculatedUsage: {
+          localStorage,
+          r2ActualStorage,
+          totalUsed,
+          localCount,
+          r2ActualFiles,
+          r2StorageError
+        },
+        databaseQuota: quota ? {
+          usedStorage: quota.usedStorage,
+          maxStorage: quota.maxStorage,
+          customQuota: quota.customQuota
+        } : null,
+        isConsistent: quota ? (totalUsed === quota.usedStorage) : false
+      }
+    } catch (error) {
+      logger.error("获取配额调试信息失败:", error)
+      set.status = 500
+      return { error: "Failed to get quota debug info" }
     }
   })

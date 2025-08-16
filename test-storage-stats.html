@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>存储统计测试</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 16px;
+            border-radius: 6px;
+            border-left: 4px solid #007bff;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+        .stat-label {
+            font-size: 14px;
+            color: #666;
+            margin-top: 4px;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 8px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+        .r2-storage { border-left-color: #007bff; }
+        .local-storage { border-left-color: #28a745; }
+        .total-storage { border-left-color: #6c757d; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .error {
+            color: #dc3545;
+            background: #f8d7da;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success {
+            color: #155724;
+            background: #d4edda;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 存储统计功能测试</h1>
+    
+    <div class="card">
+        <h2>测试说明</h2>
+        <p>此页面用于测试管理面板中新的存储统计功能，验证R2存储空间统计是否正常工作。</p>
+        
+        <div>
+            <label for="apiUrl">API 地址:</label>
+            <input type="text" id="apiUrl" value="http://localhost:8080" style="width: 300px; padding: 5px; margin: 0 10px;">
+        </div>
+        <br>
+        <div>
+            <label for="token">管理员Token:</label>
+            <input type="password" id="token" placeholder="输入管理员JWT Token" style="width: 400px; padding: 5px; margin: 0 10px;">
+        </div>
+        <br>
+        <button onclick="testStorageStats()">测试存储统计</button>
+        <button onclick="clearResults()">清除结果</button>
+    </div>
+
+    <div id="results"></div>
+
+    <script>
+        function formatFileSize(bytes) {
+            if (bytes === 0) return "0 字节";
+            const k = 1024;
+            const sizes = ["字节", "KB", "MB", "GB", "TB"];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Number.parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+        }
+
+        function getStoragePercentage(storageAmount, totalStorage) {
+            if (totalStorage === 0) return 0;
+            return Math.round((storageAmount / totalStorage) * 100);
+        }
+
+        async function testStorageStats() {
+            const apiUrl = document.getElementById('apiUrl').value;
+            const token = document.getElementById('token').value;
+            const resultsDiv = document.getElementById('results');
+
+            if (!token) {
+                resultsDiv.innerHTML = '<div class="error">请输入管理员Token</div>';
+                return;
+            }
+
+            try {
+                resultsDiv.innerHTML = '<div>正在获取统计数据...</div>';
+
+                const response = await fetch(`${apiUrl}/admin/stats`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const stats = await response.json();
+                
+                resultsDiv.innerHTML = `
+                    <div class="card">
+                        <h2>✅ 统计数据获取成功</h2>
+                        
+                        <div class="stats-grid">
+                            <div class="stat-card total-storage">
+                                <div class="stat-value">${stats.totalUsers || 0}</div>
+                                <div class="stat-label">总用户数</div>
+                                <div style="font-size: 12px; margin-top: 4px;">
+                                    管理员: ${stats.adminUsers || 0} | 普通用户: ${stats.regularUsers || 0}
+                                </div>
+                            </div>
+                            
+                            <div class="stat-card total-storage">
+                                <div class="stat-value">${stats.totalFiles || 0}</div>
+                                <div class="stat-label">总文件数</div>
+                                <div style="font-size: 12px; margin-top: 4px;">
+                                    R2: ${stats.r2Files || 0} | 本地: ${stats.localFiles || 0}
+                                </div>
+                            </div>
+                            
+                            <div class="stat-card r2-storage">
+                                <div class="stat-value">${formatFileSize(stats.r2Storage || 0)}</div>
+                                <div class="stat-label">R2 存储使用 ${stats.r2StorageError ? '⚠️' : '✅'}</div>
+                                <div style="font-size: 12px; margin-top: 4px;">
+                                    ${getStoragePercentage(stats.r2Storage || 0, stats.totalStorage)}% 占比
+                                    ${stats.r2StorageError ? `<br><span style="color: #dc3545;">错误: ${stats.r2StorageError}</span>` : ''}
+                                    ${stats.r2FilesInDB !== undefined ? `<br>数据库记录: ${stats.r2FilesInDB} 文件` : ''}
+                                </div>
+                            </div>
+                            
+                            <div class="stat-card local-storage">
+                                <div class="stat-value">${formatFileSize(stats.localStorage || 0)}</div>
+                                <div class="stat-label">本地存储使用</div>
+                                <div style="font-size: 12px; margin-top: 4px;">
+                                    ${getStoragePercentage(stats.localStorage || 0, stats.totalStorage)}% 占比
+                                </div>
+                            </div>
+                        </div>
+
+                        <h3>存储分布详情</h3>
+                        <div style="margin: 20px 0;">
+                            <div style="margin-bottom: 16px;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                    <span>🌐 Cloudflare R2</span>
+                                    <span>${formatFileSize(stats.r2Storage || 0)} (${getStoragePercentage(stats.r2Storage || 0, stats.totalStorage)}%)</span>
+                                </div>
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: ${getStoragePercentage(stats.r2Storage || 0, stats.totalStorage)}%; background-color: #007bff;"></div>
+                                </div>
+                            </div>
+                            
+                            <div style="margin-bottom: 16px;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                    <span>💾 本地存储</span>
+                                    <span>${formatFileSize(stats.localStorage || 0)} (${getStoragePercentage(stats.localStorage || 0, stats.totalStorage)}%)</span>
+                                </div>
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: ${getStoragePercentage(stats.localStorage || 0, stats.totalStorage)}%; background-color: #28a745;"></div>
+                                </div>
+                            </div>
+                            
+                            <div style="padding-top: 16px; border-top: 1px solid #dee2e6;">
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span><strong>📊 总计</strong></span>
+                                    <span><strong>${formatFileSize(stats.totalStorage)} (${stats.totalFiles} 文件)</strong></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h3>存储配置信息</h3>
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 4px; margin: 10px 0;">
+                            <p><strong>存储类型:</strong> ${stats.storageType || 'local'}</p>
+                            <p><strong>混合模式:</strong> ${stats.enableMixedMode ? '启用' : '禁用'}</p>
+                            ${stats.r2StorageError ? `<p style="color: #dc3545;"><strong>R2错误:</strong> ${stats.r2StorageError}</p>` : ''}
+                        </div>
+
+                        <h3>数据对比</h3>
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 4px; margin: 10px 0;">
+                            <p><strong>R2实际文件数:</strong> ${stats.r2Files || 0}</p>
+                            <p><strong>R2数据库记录:</strong> ${stats.r2FilesInDB || 0}</p>
+                            <p><strong>差异:</strong> ${(stats.r2Files || 0) - (stats.r2FilesInDB || 0)} 个文件</p>
+                            <p style="font-size: 12px; color: #666;">
+                                注意：R2实际文件数包括所有存储桶中的文件，数据库记录只包括通过应用上传的文件
+                            </p>
+                        </div>
+
+                        <h3>原始数据</h3>
+                        <pre style="background: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 12px;">${JSON.stringify(stats, null, 2)}</pre>
+                    </div>
+                `;
+
+            } catch (error) {
+                resultsDiv.innerHTML = `
+                    <div class="error">
+                        <h3>❌ 测试失败</h3>
+                        <p><strong>错误信息:</strong> ${error.message}</p>
+                        <p><strong>可能原因:</strong></p>
+                        <ul>
+                            <li>API服务器未启动 (检查 ${apiUrl})</li>
+                            <li>Token无效或已过期</li>
+                            <li>没有管理员权限</li>
+                            <li>CORS配置问题</li>
+                        </ul>
+                    </div>
+                `;
+            }
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        // 页面加载时的提示
+        window.onload = function() {
+            document.getElementById('results').innerHTML = `
+                <div class="card">
+                    <h3>📋 使用说明</h3>
+                    <ol>
+                        <li>确保后端服务器正在运行 (默认: http://localhost:8080)</li>
+                        <li>使用管理员账户登录获取JWT Token</li>
+                        <li>将Token粘贴到上方输入框中</li>
+                        <li>点击"测试存储统计"按钮</li>
+                        <li>查看返回的统计数据是否包含R2存储信息</li>
+                    </ol>
+                    
+                    <h4>🎯 测试重点</h4>
+                    <ul>
+                        <li>验证API返回的数据结构是否包含 r2Storage, localStorage, r2Files, localFiles 字段</li>
+                        <li>检查存储空间计算是否正确</li>
+                        <li>确认百分比计算是否准确</li>
+                        <li>验证文件数量统计是否按存储类型正确分类</li>
+                    </ul>
+                </div>
+            `;
+        };
+    </script>
+</body>
+</html>

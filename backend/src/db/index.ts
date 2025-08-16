@@ -7,7 +7,7 @@ const sqlite = new Database(process.env.DATABASE_PATH || "./netdisk.db")
 export const db = drizzle(sqlite, { schema })
 
 // Initialize database with auto-migration
-function initializeDatabase() {
+async function initializeDatabase() {
   try {
     logger.info('🔧 开始初始化数据库...')
 
@@ -136,6 +136,27 @@ function initializeDatabase() {
         updated_at INTEGER NOT NULL,
         FOREIGN KEY (file_id) REFERENCES files (id) ON DELETE CASCADE,
         FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS user_quotas (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        max_storage INTEGER NOT NULL,
+        used_storage INTEGER NOT NULL DEFAULT 0,
+        role TEXT NOT NULL DEFAULT 'user',
+        custom_quota INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS role_quota_config (
+        id TEXT PRIMARY KEY,
+        role TEXT UNIQUE NOT NULL,
+        default_quota INTEGER NOT NULL,
+        description TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
       );
     `)
 
@@ -319,6 +340,9 @@ function initializeDatabase() {
       }
     }
 
+    // 初始化用户配额系统
+    await initializeQuotaSystem()
+
     logger.info('数据库初始化完成')
   } catch (error) {
     logger.error('数据库初始化失败:', error)
@@ -326,5 +350,75 @@ function initializeDatabase() {
   }
 }
 
+// 初始化用户配额系统
+async function initializeQuotaSystem() {
+  try {
+    logger.info('🔧 初始化用户配额系统...')
+
+    // 初始化角色默认配额配置
+    const adminQuotaExists = sqlite.prepare("SELECT COUNT(*) as count FROM role_quota_config WHERE role = 'admin'").get()
+    const userQuotaExists = sqlite.prepare("SELECT COUNT(*) as count FROM role_quota_config WHERE role = 'user'").get()
+
+    if (adminQuotaExists.count === 0) {
+      const adminQuotaId = `quota_admin_${Date.now()}`
+      sqlite.exec(`
+        INSERT INTO role_quota_config (id, role, default_quota, description, created_at, updated_at)
+        VALUES ('${adminQuotaId}', 'admin', ${10 * 1024 * 1024 * 1024}, '管理员默认配额：10GB', ${Date.now()}, ${Date.now()})
+      `)
+      logger.database('INSERT', 'role_quota_config')
+      logger.info('已创建管理员默认配额配置：10GB')
+    }
+
+    if (userQuotaExists.count === 0) {
+      const userQuotaId = `quota_user_${Date.now()}`
+      sqlite.exec(`
+        INSERT INTO role_quota_config (id, role, default_quota, description, created_at, updated_at)
+        VALUES ('${userQuotaId}', 'user', ${1 * 1024 * 1024 * 1024}, '普通用户默认配额：1GB', ${Date.now()}, ${Date.now()})
+      `)
+      logger.database('INSERT', 'role_quota_config')
+      logger.info('已创建普通用户默认配额配置：1GB')
+    }
+
+    // 为现有用户创建配额记录
+    const usersWithoutQuota = sqlite.prepare(`
+      SELECT u.id, u.role
+      FROM users u
+      LEFT JOIN user_quotas uq ON u.id = uq.user_id
+      WHERE uq.user_id IS NULL
+    `).all()
+
+    for (const user of usersWithoutQuota) {
+      const quotaConfig = sqlite.prepare("SELECT default_quota FROM role_quota_config WHERE role = ?").get(user.role)
+      const defaultQuota = quotaConfig ? quotaConfig.default_quota : (user.role === 'admin' ? 10 * 1024 * 1024 * 1024 : 1 * 1024 * 1024 * 1024)
+
+      // 计算用户当前使用量（包括本地存储和R2存储）
+      const userFiles = sqlite.prepare("SELECT COALESCE(SUM(size), 0) as total_size FROM files WHERE user_id = ?").get(user.id)
+      const totalUsedStorage = userFiles ? userFiles.total_size : 0
+
+      // 分别统计本地存储和R2存储（用于日志）
+      const localFiles = sqlite.prepare("SELECT COALESCE(SUM(size), 0) as local_size FROM files WHERE user_id = ? AND storage_type = 'local'").get(user.id)
+      const r2Files = sqlite.prepare("SELECT COALESCE(SUM(size), 0) as r2_size FROM files WHERE user_id = ? AND storage_type = 'r2'").get(user.id)
+      const localStorage = localFiles ? localFiles.local_size : 0
+      const r2Storage = r2Files ? r2Files.r2_size : 0
+
+      const quotaId = `quota_${user.id}_${Date.now()}`
+      sqlite.exec(`
+        INSERT INTO user_quotas (id, user_id, max_storage, used_storage, role, created_at, updated_at)
+        VALUES ('${quotaId}', '${user.id}', ${defaultQuota}, ${totalUsedStorage}, '${user.role}', ${Date.now()}, ${Date.now()})
+      `)
+      logger.database('INSERT', 'user_quotas')
+      logger.info(`已为用户 ${user.id} (${user.role}) 创建配额记录：${Math.round(defaultQuota / 1024 / 1024 / 1024)}GB，已使用：${Math.round(totalUsedStorage / 1024 / 1024)}MB (本地: ${Math.round(localStorage / 1024 / 1024)}MB, R2: ${Math.round(r2Storage / 1024 / 1024)}MB)`)
+    }
+
+    logger.info('用户配额系统初始化完成')
+  } catch (error) {
+    logger.error('用户配额系统初始化失败:', error)
+    throw error
+  }
+}
+
 // 执行初始化
-initializeDatabase()
+initializeDatabase().catch(error => {
+  logger.error('数据库初始化失败:', error)
+  process.exit(1)
+})

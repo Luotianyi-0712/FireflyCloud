@@ -28,7 +28,7 @@ export const folderRoutes = new Elysia({ prefix: "/folders" })
       throw new Error("Invalid token")
     }
 
-    return { user: payload }
+    return { user: payload as { userId: string; email: string; role: string } }
   })
   // 获取用户的文件夹树结构
   .get("/", async ({ user }) => {

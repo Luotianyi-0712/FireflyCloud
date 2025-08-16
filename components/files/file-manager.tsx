@@ -6,7 +6,8 @@ import { FileUpload } from "./file-upload"
 import { FileList } from "./file-list"
 import { FolderTree } from "./folder-tree"
 import { FolderBreadcrumb } from "./folder-breadcrumb"
-import { R2MountManager } from "./r2-mount-manager"
+import { QuotaDisplay } from "./quota-display"
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
@@ -235,19 +236,20 @@ export function FileManager() {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* 文件夹树 */}
-        <div className="lg:col-span-1">
+        {/* 文件夹树和配额显示 */}
+        <div className="lg:col-span-1 space-y-4">
           <FolderTree
             selectedFolderId={selectedFolderId}
             onFolderSelect={handleFolderSelect}
             onRefresh={handleRefresh}
           />
+          <QuotaDisplay />
         </div>
 
         {/* 主内容区域 */}
         <div className="lg:col-span-3">
           <Tabs defaultValue="files" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="files" className="flex items-center gap-2">
                 <Files className="h-4 w-4" />
                 文件 ({files.length})
@@ -255,10 +257,6 @@ export function FileManager() {
               <TabsTrigger value="upload" className="flex items-center gap-2">
                 <Upload className="h-4 w-4" />
                 上传文件
-              </TabsTrigger>
-              <TabsTrigger value="r2-mount" className="flex items-center gap-2">
-                <Cloud className="h-4 w-4" />
-                R2 挂载
               </TabsTrigger>
             </TabsList>
 
@@ -327,13 +325,6 @@ export function FileManager() {
                   />
                 </CardContent>
               </Card>
-            </TabsContent>
-
-            <TabsContent value="r2-mount" className="space-y-4">
-              <R2MountManager
-                folders={folders}
-                onMountCreated={handleRefresh}
-              />
             </TabsContent>
           </Tabs>
         </div>

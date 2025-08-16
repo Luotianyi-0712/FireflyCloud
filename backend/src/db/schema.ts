@@ -115,3 +115,25 @@ export const fileShares = sqliteTable("file_shares", {
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 })
+
+// 用户存储配额表
+export const userQuotas = sqliteTable("user_quotas", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  maxStorage: integer("max_storage").notNull(), // 最大存储容量（字节）
+  usedStorage: integer("used_storage").notNull().default(0), // 已使用存储（字节）
+  role: text("role").notNull().default("user"), // 用户角色（admin/user）
+  customQuota: integer("custom_quota"), // 自定义配额（字节），如果设置则覆盖默认配额
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+})
+
+// 角色默认配额配置表
+export const roleQuotaConfig = sqliteTable("role_quota_config", {
+  id: text("id").primaryKey(),
+  role: text("role").notNull().unique(), // 角色名称（admin/user）
+  defaultQuota: integer("default_quota").notNull(), // 默认配额（字节）
+  description: text("description"), // 配额描述
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+})

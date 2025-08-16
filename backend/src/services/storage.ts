@@ -5,6 +5,20 @@ import { existsSync } from "fs"
 import path from "path"
 import { logger } from "../utils/logger"
 
+// R2存储统计缓存
+interface R2StorageCache {
+  data: {
+    totalSize: number
+    totalFiles: number
+    error?: string
+  }
+  timestamp: number
+  ttl: number // 缓存生存时间（毫秒）
+}
+
+// 全局缓存对象
+const r2StorageCache = new Map<string, R2StorageCache>()
+
 export class StorageService {
   private s3Client?: S3Client
   private config: any
@@ -297,6 +311,207 @@ export class StorageService {
       const buffer = await fs.readFile(filePath)
       logger.info(`成功从本地读取文件: ${storagePath}, 大小: ${buffer.length} bytes`)
       return buffer
+    }
+  }
+
+  // 新增：计算R2存储桶的实际使用量（带缓存）
+  async calculateR2StorageUsage(useCache: boolean = true): Promise<{
+    totalSize: number
+    totalFiles: number
+    error?: string
+    fromCache?: boolean
+  }> {
+    if (!this.s3Client) {
+      return {
+        totalSize: 0,
+        totalFiles: 0,
+        error: "R2 client not configured"
+      }
+    }
+
+    const cacheKey = `${this.config.r2Bucket}_storage_usage`
+    const cacheTTL = 5 * 60 * 1000 // 5分钟缓存
+
+    // 检查缓存
+    if (useCache) {
+      const cached = r2StorageCache.get(cacheKey)
+      if (cached && (Date.now() - cached.timestamp) < cached.ttl) {
+        logger.debug("使用R2存储统计缓存数据")
+        return {
+          ...cached.data,
+          fromCache: true
+        }
+      }
+    }
+
+    try {
+      logger.debug("开始计算R2存储桶使用量")
+
+      let totalSize = 0
+      let totalFiles = 0
+      let continuationToken: string | undefined
+
+      // 使用分页查询遍历所有对象
+      do {
+        const command = new ListObjectsV2Command({
+          Bucket: this.config.r2Bucket,
+          ContinuationToken: continuationToken,
+          MaxKeys: 1000, // 每次最多获取1000个对象
+        })
+
+        const response = await this.s3Client.send(command)
+
+        if (response.Contents) {
+          for (const object of response.Contents) {
+            if (object.Size) {
+              totalSize += object.Size
+              totalFiles++
+            }
+          }
+        }
+
+        continuationToken = response.NextContinuationToken
+
+        // 记录进度
+        if (response.Contents && response.Contents.length > 0) {
+          logger.debug(`已处理 ${totalFiles} 个文件，当前总大小: ${totalSize} 字节`)
+        }
+
+      } while (continuationToken)
+
+      logger.info(`R2存储桶使用量计算完成: ${totalFiles} 个文件，总大小: ${totalSize} 字节`)
+
+      const result = {
+        totalSize,
+        totalFiles
+      }
+
+      // 更新缓存
+      if (useCache) {
+        r2StorageCache.set(cacheKey, {
+          data: result,
+          timestamp: Date.now(),
+          ttl: cacheTTL
+        })
+        logger.debug("R2存储统计数据已缓存")
+      }
+
+      return result
+
+    } catch (error) {
+      logger.error("计算R2存储桶使用量失败:", error)
+      const errorResult = {
+        totalSize: 0,
+        totalFiles: 0,
+        error: error instanceof Error ? error.message : "Unknown error"
+      }
+
+      // 如果查询失败，尝试返回缓存的数据（即使过期）
+      if (useCache) {
+        const cached = r2StorageCache.get(cacheKey)
+        if (cached) {
+          logger.warn("R2查询失败，使用过期缓存数据")
+          return {
+            ...cached.data,
+            fromCache: true,
+            error: `${errorResult.error} (using cached data)`
+          }
+        }
+      }
+
+      return errorResult
+    }
+  }
+
+  // 新增：清除R2存储统计缓存
+  clearR2StorageCache(): void {
+    const cacheKey = `${this.config.r2Bucket}_storage_usage`
+    r2StorageCache.delete(cacheKey)
+    logger.debug("R2存储统计缓存已清除")
+  }
+
+  // 新增：获取R2存储桶的详细统计信息
+  async getR2StorageStats(): Promise<{
+    totalSize: number
+    totalFiles: number
+    averageFileSize: number
+    largestFile: { key: string; size: number } | null
+    smallestFile: { key: string; size: number } | null
+    error?: string
+  }> {
+    if (!this.s3Client) {
+      return {
+        totalSize: 0,
+        totalFiles: 0,
+        averageFileSize: 0,
+        largestFile: null,
+        smallestFile: null,
+        error: "R2 client not configured"
+      }
+    }
+
+    try {
+      logger.debug("开始获取R2存储桶详细统计")
+
+      let totalSize = 0
+      let totalFiles = 0
+      let largestFile: { key: string; size: number } | null = null
+      let smallestFile: { key: string; size: number } | null = null
+      let continuationToken: string | undefined
+
+      do {
+        const command = new ListObjectsV2Command({
+          Bucket: this.config.r2Bucket,
+          ContinuationToken: continuationToken,
+          MaxKeys: 1000,
+        })
+
+        const response = await this.s3Client.send(command)
+
+        if (response.Contents) {
+          for (const object of response.Contents) {
+            if (object.Size && object.Key) {
+              totalSize += object.Size
+              totalFiles++
+
+              // 跟踪最大和最小文件
+              if (!largestFile || object.Size > largestFile.size) {
+                largestFile = { key: object.Key, size: object.Size }
+              }
+
+              if (!smallestFile || object.Size < smallestFile.size) {
+                smallestFile = { key: object.Key, size: object.Size }
+              }
+            }
+          }
+        }
+
+        continuationToken = response.NextContinuationToken
+
+      } while (continuationToken)
+
+      const averageFileSize = totalFiles > 0 ? Math.round(totalSize / totalFiles) : 0
+
+      logger.info(`R2存储桶详细统计完成: ${totalFiles} 个文件，总大小: ${totalSize} 字节，平均大小: ${averageFileSize} 字节`)
+
+      return {
+        totalSize,
+        totalFiles,
+        averageFileSize,
+        largestFile,
+        smallestFile
+      }
+
+    } catch (error) {
+      logger.error("获取R2存储桶详细统计失败:", error)
+      return {
+        totalSize: 0,
+        totalFiles: 0,
+        averageFileSize: 0,
+        largestFile: null,
+        smallestFile: null,
+        error: error instanceof Error ? error.message : "Unknown error"
+      }
     }
   }
 }
