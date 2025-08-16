@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSR修复测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            margin: 20px 0;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        .code-block {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 14px;
+            overflow-x: auto;
+        }
+        .fix-item {
+            margin: 10px 0;
+            padding: 10px;
+            border-left: 4px solid #007bff;
+            background: #f8f9fa;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 SSR修复测试</h1>
+    
+    <div class="test-section">
+        <h2>问题描述</h2>
+        <div class="status error">
+            <strong>原始错误:</strong><br>
+            ❌ TypeError: Please use the 'new' operator, this DOM object constructor cannot be called as a function.<br>
+            ❌ 在服务器端渲染时访问浏览器API导致错误<br>
+            ❌ localStorage、document、window等API在服务器端不可用
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>修复内容</h2>
+        
+        <div class="fix-item">
+            <strong>1. 修复URL构造函数使用</strong><br>
+            <div class="code-block">
+// 修改前
+const downloadUrl = window.URL.createObjectURL(blob)
+
+// 修改后  
+const downloadUrl = URL.createObjectURL(blob)
+            </div>
+            <p>使用全局URL对象而不是window.URL</p>
+        </div>
+
+        <div class="fix-item">
+            <strong>2. 修复localStorage访问</strong><br>
+            <div class="code-block">
+// 修改前
+const savedToken = localStorage.getItem("token")
+
+// 修改后
+if (typeof window !== 'undefined') {
+  const savedToken = localStorage.getItem("token")
+}
+            </div>
+            <p>只在客户端访问localStorage</p>
+        </div>
+
+        <div class="fix-item">
+            <strong>3. 修复document访问</strong><br>
+            <div class="code-block">
+// 修改前
+document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
+
+// 修改后
+if (typeof document !== 'undefined') {
+  document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
+}
+            </div>
+            <p>只在客户端设置cookie</p>
+        </div>
+
+        <div class="fix-item">
+            <strong>4. 修复window事件监听器</strong><br>
+            <div class="code-block">
+// 修改前
+useEffect(() => {
+  window.addEventListener('mousemove', handleMouseMove)
+  return () => window.removeEventListener('mousemove', handleMouseMove)
+}, [])
+
+// 修改后
+useEffect(() => {
+  if (typeof window === 'undefined') return
+  
+  window.addEventListener('mousemove', handleMouseMove)
+  return () => window.removeEventListener('mousemove', handleMouseMove)
+}, [])
+            </div>
+            <p>只在客户端添加事件监听器</p>
+        </div>
+
+        <div class="fix-item">
+            <strong>5. 修复window.location访问</strong><br>
+            <div class="code-block">
+// 修改前
+return `${window.location.origin}/share/${share.shareToken}`
+
+// 修改后
+if (typeof window !== 'undefined') {
+  return `${window.location.origin}/share/${share.shareToken}`
+}
+return `/share/${share.shareToken}`
+            </div>
+            <p>只在客户端访问window.location</p>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>修复的文件</h2>
+        <div class="code-block">
+修复的文件列表:
+- lib/utils.ts (URL构造函数)
+- components/auth/auth-provider.tsx (localStorage)
+- components/ui/sidebar.tsx (document.cookie, window事件)
+- app/page.tsx (window事件监听器)
+- app/shares/page.tsx (window.location)
+- test-download.html (URL构造函数)
+- test-download-cors.html (URL构造函数)
+- test-cors-fix.html (URL构造函数)
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>测试步骤</h2>
+        <div class="status info">
+            <strong>验证步骤:</strong><br>
+            1. 重启前端开发服务器<br>
+            2. 清除浏览器缓存<br>
+            3. 访问应用首页<br>
+            4. 检查浏览器控制台是否有错误<br>
+            5. 测试登录/注册功能<br>
+            6. 测试文件下载功能<br>
+            7. 测试R2挂载功能<br>
+            8. 验证所有功能正常工作
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>修复状态</h2>
+        <div class="status success">
+            <strong>修复完成:</strong><br>
+            ✅ 1. URL构造函数使用已修复<br>
+            ✅ 2. localStorage访问已修复<br>
+            ✅ 3. document访问已修复<br>
+            ✅ 4. window事件监听器已修复<br>
+            ✅ 5. window.location访问已修复<br>
+            🔄 6. 等待实际测试验证...
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>技术原理</h2>
+        <div class="code-block">
+SSR (Server-Side Rendering) 问题:
+- Next.js在服务器端预渲染页面
+- 服务器端没有浏览器API (window, document, localStorage等)
+- 需要检查 typeof window !== 'undefined' 来区分环境
+- 使用 'use client' 指令标记客户端组件
+- 在useEffect中安全地访问浏览器API
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>预期效果</h2>
+        <div class="status success">
+            <strong>修复后效果:</strong><br>
+            ✅ 页面可以正常加载，无SSR错误<br>
+            ✅ 所有功能在客户端正常工作<br>
+            ✅ 服务器端渲染不会报错<br>
+            ✅ 用户体验保持一致<br>
+            ✅ 开发体验更加稳定
+        </div>
+    </div>
+
+    <script>
+        console.log('🔧 SSR修复测试页面已加载');
+        console.log('📝 修复内容:');
+        console.log('1. URL构造函数使用修复');
+        console.log('2. localStorage访问修复');
+        console.log('3. document访问修复');
+        console.log('4. window事件监听器修复');
+        console.log('5. window.location访问修复');
+    </script>
+</body>
+</html> 

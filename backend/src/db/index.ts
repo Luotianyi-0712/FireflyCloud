@@ -56,7 +56,21 @@ function initializeDatabase() {
         r2_access_key TEXT,
         r2_secret_key TEXT,
         r2_bucket TEXT,
+        enable_mixed_mode INTEGER NOT NULL DEFAULT 0,
         updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS r2_mount_points (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        folder_id TEXT NOT NULL,
+        r2_path TEXT NOT NULL,
+        mount_name TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+        FOREIGN KEY (folder_id) REFERENCES folders (id) ON DELETE CASCADE
       );
 
       CREATE TABLE IF NOT EXISTS email_verification_codes (
@@ -78,6 +92,46 @@ function initializeDatabase() {
         secure INTEGER DEFAULT 1,
         email_template TEXT,
         updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS download_tokens (
+        id TEXT PRIMARY KEY,
+        file_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        token TEXT UNIQUE NOT NULL,
+        used INTEGER NOT NULL DEFAULT 0,
+        usage_count INTEGER NOT NULL DEFAULT 0,
+        max_usage INTEGER NOT NULL DEFAULT 2,
+        expires_at INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (file_id) REFERENCES files (id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS file_direct_links (
+        id TEXT PRIMARY KEY,
+        file_id TEXT UNIQUE NOT NULL,
+        user_id TEXT NOT NULL,
+        direct_name TEXT UNIQUE NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        access_count INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (file_id) REFERENCES files (id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS file_shares (
+        id TEXT PRIMARY KEY,
+        file_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        share_token TEXT UNIQUE NOT NULL,
+        pickup_code TEXT,
+        require_login INTEGER NOT NULL DEFAULT 0,
+        expires_at INTEGER,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (file_id) REFERENCES files (id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
       );
     `)
 
@@ -101,6 +155,46 @@ function initializeDatabase() {
       sqlite.exec('ALTER TABLE files ADD COLUMN folder_id TEXT')
       logger.database('ALTER', 'files')
       logger.info('folder_id 字段添加成功')
+    }
+
+    // 检查并升级 download_tokens 表结构
+    const downloadTokensExists = sqlite.prepare(`
+      SELECT name FROM sqlite_master
+      WHERE type='table' AND name='download_tokens'
+    `).get()
+
+    if (downloadTokensExists) {
+      const downloadTokenColumns = sqlite.prepare("PRAGMA table_info(download_tokens)").all()
+      const hasUsageCount = downloadTokenColumns.some(col => col.name === 'usage_count')
+      const hasMaxUsage = downloadTokenColumns.some(col => col.name === 'max_usage')
+
+      if (!hasUsageCount) {
+        logger.info('添加 usage_count 字段到 download_tokens 表...')
+        sqlite.exec('ALTER TABLE download_tokens ADD COLUMN usage_count INTEGER NOT NULL DEFAULT 0')
+        logger.database('ALTER', 'download_tokens')
+        logger.info('usage_count 字段添加成功')
+      }
+
+      if (!hasMaxUsage) {
+        logger.info('添加 max_usage 字段到 download_tokens 表...')
+        sqlite.exec('ALTER TABLE download_tokens ADD COLUMN max_usage INTEGER NOT NULL DEFAULT 2')
+        logger.database('ALTER', 'download_tokens')
+        logger.info('max_usage 字段添加成功')
+      }
+
+      // 迁移现有数据：将 used=1 的记录设置为已达到最大使用次数
+      if (!hasUsageCount || !hasMaxUsage) {
+        logger.info('迁移现有下载令牌数据...')
+        const updateResult = sqlite.exec(`
+          UPDATE download_tokens
+          SET usage_count = CASE
+            WHEN used = 1 THEN max_usage
+            ELSE 0
+          END
+          WHERE usage_count = 0 OR usage_count IS NULL
+        `)
+        logger.info('下载令牌数据迁移完成')
+      }
     }
 
     // 插入默认数据

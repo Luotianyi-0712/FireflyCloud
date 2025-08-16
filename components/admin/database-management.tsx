@@ -141,7 +141,7 @@ export function DatabaseManagement() {
 
   const formatValue = (value: any, column: string): string => {
     if (value === null || value === undefined) {
-      return "NULL"
+      return "-"
     }
     if (typeof value === "boolean") {
       return value ? "是" : "否"
@@ -149,7 +149,12 @@ export function DatabaseManagement() {
     if (typeof value === "number") {
       // 如果是时间戳（大于1000000000000，即2001年之后的毫秒时间戳）
       if (value > 1000000000000) {
-        return new Date(value).toLocaleString("zh-CN")
+        // 只在客户端使用toLocaleString
+        if (typeof window !== 'undefined') {
+          return new Date(value).toLocaleString("zh-CN")
+        }
+        // 服务器端回退方案
+        return new Date(value).toISOString()
       }
       // 如果是文件大小字段
       if (column === "size") {
@@ -218,7 +223,12 @@ export function DatabaseManagement() {
               <Table className="h-8 w-8 text-green-600" />
               <div className="ml-4">
                 <p className="text-sm font-medium text-muted-foreground">总记录数</p>
-                <p className="text-2xl font-bold">{totalRecords.toLocaleString()}</p>
+                <p className="text-2xl font-bold">
+                  {typeof window !== 'undefined' 
+                    ? totalRecords.toLocaleString() 
+                    : totalRecords.toString()
+                  }
+                </p>
               </div>
             </div>
           </CardContent>

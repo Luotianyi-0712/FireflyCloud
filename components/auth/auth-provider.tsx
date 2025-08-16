@@ -1,12 +1,14 @@
 "use client"
 
-import type React from "react"
-import { createContext, useContext, useEffect, useState } from "react"
+import { createContext, useContext, useState, useEffect } from "react"
 
 interface User {
   id: string
   email: string
-  role: "admin" | "user"
+  role: string
+  emailVerified: boolean
+  createdAt: number
+  updatedAt: number
 }
 
 interface AuthContextType {
@@ -30,10 +32,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     setIsClient(true)
-    const savedToken = localStorage.getItem("token")
-    if (savedToken) {
-      setToken(savedToken)
-      fetchUser(savedToken)
+    // 只在客户端访问localStorage
+    if (typeof window !== 'undefined') {
+      const savedToken = localStorage.getItem("token")
+      if (savedToken) {
+        setToken(savedToken)
+        fetchUser(savedToken)
+      } else {
+        setLoading(false)
+      }
     } else {
       setLoading(false)
     }
@@ -51,14 +58,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const data = await response.json()
         setUser(data.user)
       } else {
-        if (isClient) {
+        if (isClient && typeof window !== 'undefined') {
           localStorage.removeItem("token")
         }
         setToken(null)
       }
     } catch (error) {
       console.error("Failed to fetch user:", error)
-      if (isClient) {
+      if (isClient && typeof window !== 'undefined') {
         localStorage.removeItem("token")
       }
       setToken(null)
@@ -84,7 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const data = await response.json()
     setToken(data.token)
     setUser(data.user)
-    if (isClient) {
+    if (isClient && typeof window !== 'undefined') {
       localStorage.setItem("token", data.token)
     }
   }
@@ -106,7 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const data = await response.json()
     setToken(data.token)
     setUser(data.user)
-    if (isClient) {
+    if (isClient && typeof window !== 'undefined') {
       localStorage.setItem("token", data.token)
     }
   }
@@ -114,7 +121,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     setUser(null)
     setToken(null)
-    if (isClient) {
+    if (isClient && typeof window !== 'undefined') {
       localStorage.removeItem("token")
     }
   }

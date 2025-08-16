@@ -34,6 +34,9 @@ export default function HomePage() {
 
   // 跟踪鼠标位置
   useEffect(() => {
+    // 只在客户端添加事件监听器
+    if (typeof window === 'undefined') return
+
     const handleMouseMove = (e: MouseEvent) => {
       setMousePosition({ x: e.clientX, y: e.clientY })
     }

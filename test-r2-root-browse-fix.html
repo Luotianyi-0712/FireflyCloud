@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>R2根目录浏览修复测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            margin: 20px 0;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        .code-block {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 14px;
+            overflow-x: auto;
+        }
+        .fix-item {
+            margin: 10px 0;
+            padding: 10px;
+            border-left: 4px solid #007bff;
+            background: #f8f9fa;
+        }
+        .example {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 R2根目录浏览修复测试</h1>
+    
+    <div class="test-section">
+        <h2>问题描述</h2>
+        <div class="status error">
+            <strong>原始问题:</strong><br>
+            ❌ R2路径选择根目录时，文件浏览可以正常显示，但是没有任何文件<br>
+            ❌ 文件夹和文件名称显示不正确<br>
+            ❌ 根目录下的内容无法正确显示
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>问题分析</h2>
+        <div class="status info">
+            <strong>根本原因:</strong><br>
+            1. 根目录下 `currentPath` 为空字符串<br>
+            2. 文件夹名称逻辑：`folder.replace(currentPath, "")` 在根目录下保留完整路径<br>
+            3. 文件名称逻辑：`file.key.replace(currentPath, "")` 在根目录下保留完整路径<br>
+            4. 需要区分根目录和子目录的显示逻辑
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>修复内容</h2>
+        
+        <div class="fix-item">
+            <strong>1. 修复文件夹名称显示逻辑</strong><br>
+            <div class="code-block">
+// 修改前
+const folderName = folder.replace(currentPath, "").replace(/\/$/, "")
+
+// 修改后
+let folderName = folder
+if (currentPath) {
+  folderName = folder.replace(currentPath, "").replace(/\/$/, "")
+} else {
+  // 根目录下，取文件夹名称（去掉末尾的斜杠）
+  folderName = folder.replace(/\/$/, "").split("/").pop() || folder
+}
+            </div>
+            <div class="example">
+                <strong>示例:</strong><br>
+                根目录下：<br>
+                - 输入：folder = "documents/"<br>
+                - 输出：folderName = "documents"<br><br>
+                子目录下：<br>
+                - 输入：folder = "documents/images/", currentPath = "documents/"<br>
+                - 输出：folderName = "images"
+            </div>
+        </div>
+
+        <div class="fix-item">
+            <strong>2. 修复文件名称显示逻辑</strong><br>
+            <div class="code-block">
+// 修改前
+const fileName = file.key.replace(currentPath, "")
+
+// 修改后
+let fileName = file.key
+if (currentPath) {
+  fileName = file.key.replace(currentPath, "")
+} else {
+  // 根目录下，取文件名（去掉路径部分）
+  fileName = file.key.split("/").pop() || file.key
+}
+            </div>
+            <div class="example">
+                <strong>示例:</strong><br>
+                根目录下：<br>
+                - 输入：file.key = "readme.txt"<br>
+                - 输出：fileName = "readme.txt"<br><br>
+                子目录下：<br>
+                - 输入：file.key = "documents/image.jpg", currentPath = "documents/"<br>
+                - 输出：fileName = "image.jpg"
+            </div>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>修复的文件</h2>
+        <div class="code-block">
+修复的文件列表:
+- components/admin/r2-browser.tsx (文件夹和文件名称显示逻辑)
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>测试步骤</h2>
+        <div class="status info">
+            <strong>验证步骤:</strong><br>
+            1. 重启前端开发服务器<br>
+            2. 清除浏览器缓存<br>
+            3. 访问文件管理页面<br>
+            4. 切换到"R2挂载"标签页<br>
+            5. 点击"创建挂载点"按钮<br>
+            6. 在R2路径输入框旁边点击"浏览"按钮<br>
+            7. 检查根目录下是否显示文件和文件夹<br>
+            8. 验证文件夹和文件名称是否正确显示<br>
+            9. 测试点击文件夹导航功能<br>
+            10. 验证子目录下的显示是否正常
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>修复状态</h2>
+        <div class="status success">
+            <strong>修复完成:</strong><br>
+            ✅ 1. 文件夹名称显示逻辑已修复<br>
+            ✅ 2. 文件名称显示逻辑已修复<br>
+            ✅ 3. 根目录和子目录显示逻辑已区分<br>
+            ✅ 4. 路径处理逻辑已优化<br>
+            🔄 5. 等待实际测试验证...
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>技术原理</h2>
+        <div class="code-block">
+R2根目录浏览问题:
+- 根目录下 currentPath 为空字符串
+- 需要区分根目录和子目录的显示逻辑
+- 文件夹名称：根目录下取最后一段，子目录下去掉前缀
+- 文件名称：根目录下取文件名，子目录下去掉前缀
+- 使用 split("/").pop() 获取路径的最后一段
+- 使用 replace() 处理子目录的前缀去除
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>预期效果</h2>
+        <div class="status success">
+            <strong>修复后效果:</strong><br>
+            ✅ 根目录下正确显示文件和文件夹<br>
+            ✅ 文件夹和文件名称显示正确<br>
+            ✅ 导航功能正常工作<br>
+            ✅ 子目录显示逻辑保持一致<br>
+            ✅ 用户体验更加直观
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>调试信息</h2>
+        <div class="code-block">
+调试步骤:
+1. 打开浏览器开发者工具
+2. 查看 Network 标签页
+3. 检查 /storage/r2/browse 请求
+4. 验证响应数据格式
+5. 检查前端组件状态
+6. 验证名称处理逻辑
+        </div>
+    </div>
+
+    <script>
+        console.log('🔧 R2根目录浏览修复测试页面已加载');
+        console.log('📝 修复内容:');
+        console.log('1. 文件夹名称显示逻辑修复');
+        console.log('2. 文件名称显示逻辑修复');
+        console.log('3. 根目录和子目录显示逻辑区分');
+        console.log('4. 路径处理逻辑优化');
+    </script>
+</body>
+</html> 

@@ -31,15 +31,17 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
-import { 
-  Folder, 
-  FolderPlus, 
-  FolderOpen, 
-  Edit, 
-  Trash2, 
-  ChevronRight, 
+import {
+  Folder,
+  FolderPlus,
+  FolderOpen,
+  Edit,
+  Trash2,
+  ChevronRight,
   ChevronDown,
-  Home
+  Home,
+  Cloud,
+  Link
 } from "lucide-react"
 
 interface FolderItem {
@@ -52,6 +54,8 @@ interface FolderItem {
   updatedAt: number
   children?: FolderItem[]
   isExpanded?: boolean
+  isR2Mount?: boolean
+  mountPointId?: string
 }
 
 interface FolderTreeProps {
@@ -297,13 +301,23 @@ export function FolderTree({ selectedFolderId, onFolderSelect, onRefresh }: Fold
               )}
               {!hasChildren && <div className="w-4" />}
               
-              {folder.isExpanded ? (
+              {folder.isR2Mount ? (
+                <div className="flex items-center gap-1">
+                  <Cloud className="h-4 w-4 text-purple-500" />
+                  <Link className="h-3 w-3 text-purple-500" />
+                </div>
+              ) : folder.isExpanded ? (
                 <FolderOpen className="h-4 w-4 text-blue-500" />
               ) : (
                 <Folder className="h-4 w-4 text-blue-500" />
               )}
-              
-              <span className="text-sm truncate">{folder.name}</span>
+
+              <span className={`text-sm truncate ${folder.isR2Mount ? 'text-purple-600 font-medium' : ''}`}>
+                {folder.name}
+                {folder.isR2Mount && (
+                  <span className="ml-1 text-xs text-purple-500">(R2)</span>
+                )}
+              </span>
             </div>
           </ContextMenuTrigger>
           <ContextMenuContent>

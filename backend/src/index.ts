@@ -67,7 +67,7 @@ logger.info('🚀 正在启动 NetDisk API 服务器...')
 const app = new Elysia()
   // 添加日志中间件（在其他中间件之前）
   .use(loggingMiddleware)
-  .use(cors())
+  .use(cors()) // 允许所有跨域请求
   .use(
     swagger({
       documentation: {

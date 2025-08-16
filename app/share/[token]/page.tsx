@@ -27,6 +27,7 @@ import {
   Cloud
 } from "lucide-react"
 import { getFileIcon } from "@/lib/file-icons"
+import { downloadFile } from "@/lib/utils"
 
 interface FileInfo {
   id: string
@@ -103,8 +104,8 @@ export default function SharePage() {
 
       if (response.ok) {
         const data = await response.json()
-        // 在新窗口中打开下载链接
-        window.open(data.downloadUrl, '_blank')
+        // 使用通用下载函数直接下载文件
+        await downloadFile(data.downloadUrl, fileInfo?.originalName)
       } else {
         const errorData = await response.json().catch(() => ({}))
         alert(`下载失败: ${errorData.error || '未知错误'}`)

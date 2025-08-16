@@ -32,21 +32,25 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
+  File as FileIcon,
+  Folder,
   Download,
   Trash2,
-  Calendar,
-  HardDrive,
   MoreHorizontal,
+  Share2,
   Link,
   Copy,
-  Check,
-  Share2,
+  Calendar,
+  HardDrive,
+  Cloud,
+  CheckCircle,
   Shield,
   Hash,
-  Clock
+  Clock,
 } from "lucide-react"
 import { getFileIcon } from "@/lib/file-icons"
 import { DatePicker } from "@/components/ui/date-picker"
+import { downloadFile } from "@/lib/utils"
 
 interface FileItem {
   id: string
@@ -56,6 +60,14 @@ interface FileItem {
   mimeType: string
   storageType: string
   createdAt: number
+  isR2File?: boolean
+  isR2Folder?: boolean
+  r2Key?: string
+  r2Path?: string
+  lastModified?: string
+  etag?: string
+  mountPointId?: string
+  itemCount?: number
 }
 
 interface FileListProps {
@@ -63,7 +75,9 @@ interface FileListProps {
   onDeleteSuccess: () => void
 }
 
-export function FileList({ files, onDeleteSuccess }: FileListProps) {
+export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListProps & {
+  onFolderNavigate?: (folderId: string | null, isR2Folder?: boolean, r2Path?: string, mountPointId?: string) => void
+}) {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [directLinkDialog, setDirectLinkDialog] = useState<{
     open: boolean
@@ -124,10 +138,35 @@ export function FileList({ files, onDeleteSuccess }: FileListProps) {
 
 
 
-  const handleDownload = async (fileId: string, originalName: string) => {
+  const handleDownload = async (fileId: string, originalName: string, file?: FileItem) => {
     if (!token) return
 
     try {
+      // 如果是 R2 文件，直接获取公共下载链接
+      if (file?.isR2File && file?.r2Key) {
+        try {
+          const response = await fetch(`${API_URL}/storage/r2/download-url`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ key: file.r2Key }),
+          })
+
+          if (response.ok) {
+            const data = await response.json()
+            // 使用通用下载函数直接下载文件，R2预签名URL不需要额外认证
+            await downloadFile(data.downloadUrl, originalName)
+            return
+          }
+        } catch (error) {
+          console.error("R2 download failed:", error)
+          // 如果 R2 下载失败，回退到常规下载
+        }
+      }
+
+      // 常规文件下载或 R2 下载失败时的回退
       const response = await fetch(`${API_URL}/files/${fileId}/download`, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -136,8 +175,8 @@ export function FileList({ files, onDeleteSuccess }: FileListProps) {
 
       if (response.ok) {
         const data = await response.json()
-        // 直接在新窗口中打开下载链接，由后端处理文件下载
-        window.open(data.downloadUrl, '_blank')
+        // 使用通用下载函数直接下载文件，下载令牌URL不需要额外认证
+        await downloadFile(data.downloadUrl, originalName)
       } else {
         const errorData = await response.json().catch(() => ({}))
         console.error("Download failed:", response.status, errorData)
@@ -189,9 +228,21 @@ export function FileList({ files, onDeleteSuccess }: FileListProps) {
 
   const handleCopyDirectLink = async () => {
     try {
-      await navigator.clipboard.writeText(directLinkDialog.directUrl)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      if (typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(directLinkDialog.directUrl)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      } else {
+        // 回退方案：使用传统的复制方法
+        const textArea = document.createElement('textarea')
+        textArea.value = directLinkDialog.directUrl
+        document.body.appendChild(textArea)
+        textArea.select()
+        document.execCommand('copy')
+        document.body.removeChild(textArea)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      }
     } catch (error) {
       console.error("Copy failed:", error)
       alert("复制失败")
@@ -286,10 +337,36 @@ export function FileList({ files, onDeleteSuccess }: FileListProps) {
     }
   }
 
+  // 处理文件夹点击导航
+  const handleFolderClick = (file: FileItem) => {
+    if (!onFolderNavigate) return;
+
+    if (file.isR2Folder) {
+      // 导航到 R2 文件夹
+      onFolderNavigate(null, true, file.r2Path, file.mountPointId);
+    } else if (file.mimeType === "application/directory") {
+      // 导航到本地文件夹
+      onFolderNavigate(file.id, false);
+    }
+  };
+
+  // 排序文件，使文件夹显示在前面
+  const sortedFiles = [...files].sort((a, b) => {
+    const aIsFolder = a.isR2Folder || a.mimeType === "application/directory";
+    const bIsFolder = b.isR2Folder || b.mimeType === "application/directory";
+    
+    // 首先按文件夹/文件类型排序
+    if (aIsFolder && !bIsFolder) return -1;
+    if (!aIsFolder && bIsFolder) return 1;
+    
+    // 然后按名称字母顺序排序
+    return a.originalName.localeCompare(b.originalName);
+  });
+
   if (files.length === 0) {
     return (
       <div className="text-center py-12">
-        <File className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+        <FileIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
         <h3 className="text-lg font-medium mb-2">暂无文件</h3>
         <p className="text-muted-foreground">上传您的第一个文件开始使用</p>
       </div>
@@ -298,22 +375,66 @@ export function FileList({ files, onDeleteSuccess }: FileListProps) {
 
   return (
     <div className="space-y-3">
-      {files.map((file) => (
+      {sortedFiles.map((file) => (
         <Card key={file.id}>
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4 flex-1 min-w-0">
-                <div>{getFileIcon(file.mimeType, file.originalName)}</div>
+                <div 
+                  className={file.isR2Folder || file.mimeType === "application/directory" ? "cursor-pointer" : ""}
+                  onClick={() => {
+                    if (file.isR2Folder || file.mimeType === "application/directory") {
+                      handleFolderClick(file);
+                    }
+                  }}
+                >
+                  {file.isR2Folder ? (
+                    <Folder className="h-6 w-6 text-blue-500" />
+                  ) : file.mimeType === "application/directory" ? (
+                    <Folder className="h-6 w-6 text-yellow-500" />
+                  ) : (
+                    getFileIcon(file.mimeType, file.originalName)
+                  )}
+                </div>
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-medium truncate">{file.originalName}</h4>
+                  <div className="flex items-center gap-2">
+                    {file.isR2Folder || file.mimeType === "application/directory" ? (
+                      <h4 
+                        className="font-medium truncate cursor-pointer hover:text-blue-600 hover:underline" 
+                        onClick={() => handleFolderClick(file)}
+                      >
+                        {file.originalName}
+                      </h4>
+                    ) : (
+                      <h4 className="font-medium truncate">{file.originalName}</h4>
+                    )}
+                    {(file.isR2File || file.isR2Folder) && (
+                      <Badge variant="secondary" className="text-xs flex items-center gap-1">
+                        <Cloud className="h-3 w-3" />
+                        R2 {file.isR2Folder ? "目录" : ""}
+                      </Badge>
+                    )}
+                  </div>
                   <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
-                    <span>{formatFileSize(file.size)}</span>
+                    <span>
+                      {file.isR2Folder || file.mimeType === "application/directory" 
+                        ? `${file.itemCount || 1}个项目` 
+                        : formatFileSize(file.size)
+                      }
+                    </span>
                     <div className="flex items-center gap-1">
                       <Calendar className="h-3 w-3" />
-                      {formatDate(file.createdAt)}
+                      {file.isR2File && file.lastModified
+                        ? formatDate(new Date(file.lastModified).getTime())
+                        : formatDate(file.createdAt)
+                      }
                     </div>
                     <div className="flex items-center gap-1">
-                      <HardDrive className="h-3 w-3" />
+                      {file.isR2File ? (
+                        <Cloud className="h-3 w-3" />
+                      ) : (
+                        <HardDrive className="h-3 w-3" />
+                      )}
                       <Badge variant="outline" className="text-xs">
                         {file.storageType.toUpperCase()}
                       </Badge>
@@ -343,7 +464,7 @@ export function FileList({ files, onDeleteSuccess }: FileListProps) {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handleDownload(file.id, file.originalName)}
+                  onClick={() => handleDownload(file.id, file.originalName, file)}
                   className="flex items-center gap-1"
                 >
                   <Download className="h-4 w-4" />
@@ -413,7 +534,7 @@ export function FileList({ files, onDeleteSuccess }: FileListProps) {
                     className="flex items-center gap-1"
                   >
                     {copied ? (
-                      <Check className="h-4 w-4" />
+                      <CheckCircle className="h-4 w-4" />
                     ) : (
                       <Copy className="h-4 w-4" />
                     )}
@@ -528,7 +649,7 @@ export function FileList({ files, onDeleteSuccess }: FileListProps) {
                       className="flex items-center gap-1"
                     >
                       {copied ? (
-                        <Check className="h-4 w-4" />
+                        <CheckCircle className="h-4 w-4" />
                       ) : (
                         <Copy className="h-4 w-4" />
                       )}

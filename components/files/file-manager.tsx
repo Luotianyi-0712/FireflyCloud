@@ -6,10 +6,11 @@ import { FileUpload } from "./file-upload"
 import { FileList } from "./file-list"
 import { FolderTree } from "./folder-tree"
 import { FolderBreadcrumb } from "./folder-breadcrumb"
+import { R2MountManager } from "./r2-mount-manager"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
-import { Upload, Files, FolderOpen, RefreshCw } from "lucide-react"
+import { Upload, Files, FolderOpen, RefreshCw, Cloud } from "lucide-react"
 
 interface FileItem {
   id: string
@@ -24,15 +25,18 @@ interface FileItem {
 
 export function FileManager() {
   const [files, setFiles] = useState<FileItem[]>([])
+  const [folders, setFolders] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null)
+  const [r2MountInfo, setR2MountInfo] = useState<any>(null)
   const { token } = useAuth()
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
 
   useEffect(() => {
     fetchFiles()
+    fetchFolders()
   }, [refreshTrigger, selectedFolderId])
 
   const fetchFiles = async () => {
@@ -46,14 +50,89 @@ export function FileManager() {
         },
       })
 
+      let allFiles: FileItem[] = []
+
       if (response.ok) {
         const data = await response.json()
-        setFiles(data.files)
+        allFiles = data.files || []
       }
+
+      // 如果选择了文件夹，尝试获取 R2 挂载内容
+      if (selectedFolderId) {
+        try {
+          const r2Response = await fetch(`${API_URL}/folders/${selectedFolderId}/r2-contents`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          })
+
+          if (r2Response.ok) {
+            const r2Data = await r2Response.json()
+            // 合并 R2 文件到文件列表
+            allFiles = [...allFiles, ...(r2Data.files || [])]
+            
+            // 将 R2 子目录转换为虚拟文件夹条目
+            const r2FolderItems = (r2Data.folders || []).map((folder: {
+              id: string,
+              name: string,
+              path: string,
+              mountPointId: string,
+              itemCount?: number
+            }) => ({
+              id: folder.id,
+              filename: folder.name,
+              originalName: folder.name,
+              size: 0,
+              mimeType: "application/directory",
+              storageType: "r2",
+              createdAt: Date.now(),
+              isR2Folder: true, // 标记为 R2 文件夹
+              r2Path: folder.path,
+              mountPointId: folder.mountPointId,
+              itemCount: folder.itemCount || 0 // 添加项目计数
+            }));
+            
+            // 合并 R2 文件夹到文件列表
+            allFiles = [...allFiles, ...r2FolderItems];
+            
+            // 保存 R2 挂载信息
+            setR2MountInfo(r2Data.mountPoint)
+          } else {
+            setR2MountInfo(null)
+          }
+        } catch (r2Error) {
+          // R2 挂载内容获取失败不影响常规文件显示
+          console.log("No R2 mount or failed to fetch R2 contents:", r2Error)
+          setR2MountInfo(null)
+        }
+      } else {
+        setR2MountInfo(null)
+      }
+
+      setFiles(allFiles)
     } catch (error) {
       console.error("Failed to fetch files:", error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchFolders = async () => {
+    if (!token) return
+
+    try {
+      const response = await fetch(`${API_URL}/folders`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setFolders(data.folders || [])
+      }
+    } catch (error) {
+      console.error("Failed to fetch folders:", error)
     }
   }
 
@@ -70,6 +149,74 @@ export function FileManager() {
     if (selectedFolderId !== folderId) {
       setSelectedFolderId(folderId)
       setLoading(true)
+    }
+  }
+  
+  // 处理文件列表中的文件夹导航
+  const handleFolderNavigate = (folderId: string | null, isR2Folder?: boolean, r2Path?: string, mountPointId?: string) => {
+    if (isR2Folder && r2Path && mountPointId) {
+      // 这是一个R2文件夹，需要特殊处理
+      // 我们需要获取当前挂载点信息，更新当前R2挂载路径并保持在同一文件夹中
+      console.log(`导航到R2文件夹: ${r2Path}`)
+      
+      // 保持在当前选中的文件夹中，但更新 R2 路径
+      // 这里需要调用API获取R2子目录内容
+      // 为简单起见，我们可以直接刷新当前页面，后端会根据新的r2Path获取内容
+      setLoading(true);
+      
+      // 以AJAX方式获取指定R2路径的内容
+      if (token && selectedFolderId) {
+        // 使用查询参数来传递R2路径
+        const queryParams = new URLSearchParams({ r2Path });
+        
+        fetch(`${API_URL}/folders/${selectedFolderId}/r2-contents?${queryParams}`, {
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        })
+          .then(response => response.json())
+          .then(data => {
+            // 更新文件列表，包括文件和文件夹
+            let allFiles: FileItem[] = [];
+            
+            // 添加R2文件
+            allFiles = [...allFiles, ...(data.files || [])];
+            
+            // 将R2文件夹转换为条目
+            const r2FolderItems = (data.folders || []).map((folder: any) => ({
+              id: folder.id,
+              filename: folder.name,
+              originalName: folder.name,
+              size: 0,
+              mimeType: "application/directory",
+              storageType: "r2",
+              createdAt: Date.now(),
+              isR2Folder: true,
+              r2Path: folder.path,
+              mountPointId: folder.mountPointId,
+              itemCount: folder.itemCount || 0 // 添加项目计数
+            }));
+            
+            allFiles = [...allFiles, ...r2FolderItems];
+            
+            // 更新文件列表
+            setFiles(allFiles);
+            setR2MountInfo({
+              ...data.mountPoint,
+              currentR2Path: r2Path
+            });
+            setLoading(false);
+          })
+          .catch(error => {
+            console.error("Failed to navigate to R2 folder:", error);
+            setLoading(false);
+            // 刷新整个列表作为回退方案
+            setRefreshTrigger(prev => prev + 1);
+          });
+      }
+    } else {
+      // 普通文件夹导航
+      handleFolderSelect(folderId);
     }
   }
 
@@ -100,7 +247,7 @@ export function FileManager() {
         {/* 主内容区域 */}
         <div className="lg:col-span-3">
           <Tabs defaultValue="files" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="files" className="flex items-center gap-2">
                 <Files className="h-4 w-4" />
                 文件 ({files.length})
@@ -108,6 +255,10 @@ export function FileManager() {
               <TabsTrigger value="upload" className="flex items-center gap-2">
                 <Upload className="h-4 w-4" />
                 上传文件
+              </TabsTrigger>
+              <TabsTrigger value="r2-mount" className="flex items-center gap-2">
+                <Cloud className="h-4 w-4" />
+                R2 挂载
               </TabsTrigger>
             </TabsList>
 
@@ -121,10 +272,20 @@ export function FileManager() {
                         文件管理
                       </CardTitle>
                       <CardDescription>
-                        <FolderBreadcrumb
-                          currentFolderId={selectedFolderId}
-                          onFolderSelect={handleFolderSelect}
-                        />
+                        <div className="space-y-2">
+                          <FolderBreadcrumb
+                            currentFolderId={selectedFolderId}
+                            onFolderSelect={handleFolderSelect}
+                          />
+                          {r2MountInfo && (
+                            <div className="flex items-center gap-2 text-sm">
+                              <Cloud className="h-4 w-4 text-purple-500" />
+                              <span className="text-purple-600">
+                                R2 挂载: {r2MountInfo.mountName} → {r2MountInfo.r2Path || "/"}
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </CardDescription>
                     </div>
                     <Button
@@ -138,7 +299,11 @@ export function FileManager() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <FileList files={files} onDeleteSuccess={handleDeleteSuccess} />
+                  <FileList 
+                    files={files} 
+                    onDeleteSuccess={handleDeleteSuccess}
+                    onFolderNavigate={handleFolderNavigate}
+                  />
                 </CardContent>
               </Card>
             </TabsContent>
@@ -162,6 +327,13 @@ export function FileManager() {
                   />
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            <TabsContent value="r2-mount" className="space-y-4">
+              <R2MountManager
+                folders={folders}
+                onMountCreated={handleRefresh}
+              />
             </TabsContent>
           </Tabs>
         </div>

@@ -3,9 +3,10 @@ import { jwt } from "@elysiajs/jwt"
 import { bearer } from "@elysiajs/bearer"
 import { nanoid } from "nanoid"
 import { db } from "../db"
-import { folders, files } from "../db/schema"
+import { folders, files, r2MountPoints, storageConfig } from "../db/schema"
 import { eq, and, like, isNull } from "drizzle-orm"
 import { logger } from "../utils/logger"
+import { StorageService } from "../services/storage"
 
 export const folderRoutes = new Elysia({ prefix: "/folders" })
   .use(
@@ -355,5 +356,117 @@ export const folderRoutes = new Elysia({ prefix: "/folders" })
       logger.error("文件夹删除失败:", error)
       set.status = 500
       return { error: "Failed to delete folder" }
+    }
+  })
+  // 获取文件夹的 R2 挂载内容
+  .get("/:id/r2-contents", async ({ params, user, set, query }) => {
+    // 添加查询参数类型支持
+    const { r2Path } = query as { r2Path?: string };
+    try {
+      const folderId = params.id
+
+      logger.debug(`获取文件夹 R2 挂载内容: ${folderId} - 用户: ${user.userId}`)
+
+      // 检查文件夹是否有 R2 挂载点
+      const mountPoint = await db
+        .select()
+        .from(r2MountPoints)
+        .where(
+          and(
+            eq(r2MountPoints.folderId, folderId),
+            eq(r2MountPoints.userId, user.userId),
+            eq(r2MountPoints.enabled, true)
+          )
+        )
+        .get()
+
+      if (!mountPoint) {
+        set.status = 404
+        return { error: "No R2 mount point found for this folder" }
+      }
+
+      // 获取存储配置
+      const config = await db.select().from(storageConfig).get()
+      if (!config || (!config.enableMixedMode && config.storageType !== "r2")) {
+        set.status = 400
+        return { error: "R2 storage not configured" }
+      }
+
+      // 使用存储服务获取 R2 内容
+      const storageService = new StorageService(config)
+      // 使用查询参数中的r2Path覆盖挂载点路径，用于导航到子目录
+      const r2Path = query.r2Path || mountPoint.r2Path
+      const r2Contents = await storageService.listR2Objects(r2Path)
+
+              // 转换为文件夹和文件格式
+      const r2Folders = r2Contents.folders.map(folderPath => {
+        // 处理文件夹名称
+        let folderName = ""
+        if (r2Path) {
+          // 如果当前路径有值，去掉前缀
+          folderName = folderPath.replace(r2Path, "").replace(/\/$/, "").split("/").pop() || ""
+        } else {
+          // 根路径挂载时，直接获取最后一个部分
+          folderName = folderPath.replace(/\/$/, "").split("/").pop() || ""
+        }
+        
+        // 获取该文件夹的文件和子文件夹计数
+        const folderCount = r2Contents.folderCounts[folderPath] || { files: 0, folders: 0 };
+        // 即使未获取到准确计数，我们也默认至少有1个项目（用于更好的用户体验）
+        const totalItems = Math.max(1, folderCount.files + folderCount.folders);
+        
+        return {
+          id: `r2-${Buffer.from(folderPath).toString('base64')}`,
+          name: folderName,
+          path: folderPath,
+          isR2Mount: true,
+          mountPointId: mountPoint.id,
+          itemCount: totalItems, // 添加文件夹中的项目计数
+        }
+      })
+
+      const r2Files = r2Contents.files.map(file => {
+        // 正确处理根路径和子目录的文件名
+        let fileName = ""
+        if (r2Path) {
+          // 有路径的情况
+          fileName = file.key.replace(r2Path, "").split("/").pop() || ""
+        } else {
+          // 根路径的情况
+          fileName = file.key.split("/").pop() || ""
+        }
+
+        return {
+          id: `r2-${Buffer.from(file.key).toString('base64')}`,
+          filename: fileName,
+          originalName: fileName,
+          size: file.size,
+          mimeType: "application/octet-stream", // 默认类型，可以根据扩展名推断
+          storageType: "r2",
+          storagePath: file.key,
+          isR2File: true,
+          r2Key: file.key,
+          lastModified: file.lastModified,
+          etag: file.etag,
+          createdAt: new Date(file.lastModified).getTime(),
+        }
+      })
+
+      logger.info(`文件夹 ${folderId} R2 挂载内容: ${r2Folders.length} 个文件夹, ${r2Files.length} 个文件`)
+
+      return {
+        folders: r2Folders,
+        files: r2Files,
+        mountPoint: {
+          id: mountPoint.id,
+          r2Path: r2Path, // 返回当前使用的r2Path而不是挂载点的原始路径
+          mountName: mountPoint.mountName,
+          originalMountPath: mountPoint.r2Path, // 保留原始挂载路径以便需要时返回
+        }
+      }
+    } catch (error) {
+      logger.error("获取 R2 挂载内容失败:", error)
+      set.status = 500
+      return { error: "Failed to get R2 mount contents" }
     }
   })

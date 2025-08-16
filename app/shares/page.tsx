@@ -125,9 +125,21 @@ export default function SharesPage() {
 
   const handleCopy = async (text: string, type: string) => {
     try {
-      await navigator.clipboard.writeText(text)
-      setCopied(`${type}-${text}`)
-      setTimeout(() => setCopied(null), 2000)
+      if (typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(text)
+        setCopied(`${type}-${text}`)
+        setTimeout(() => setCopied(null), 2000)
+      } else {
+        // 回退方案：使用传统的复制方法
+        const textArea = document.createElement('textarea')
+        textArea.value = text
+        document.body.appendChild(textArea)
+        textArea.select()
+        document.execCommand('copy')
+        document.body.removeChild(textArea)
+        setCopied(`${type}-${text}`)
+        setTimeout(() => setCopied(null), 2000)
+      }
     } catch (error) {
       console.error("Copy failed:", error)
       alert("复制失败")
@@ -217,12 +229,22 @@ export default function SharesPage() {
   }
 
   const formatDate = (timestamp: number) => {
-    return new Date(timestamp).toLocaleString("zh-CN")
+    // 只在客户端使用toLocaleString
+    if (typeof window !== 'undefined') {
+      return new Date(timestamp).toLocaleString("zh-CN")
+    }
+    // 服务器端回退方案
+    return new Date(timestamp).toISOString()
   }
 
   const getShareUrl = (share: ShareRecord) => {
     if (share.shareToken) {
-      return `${window.location.origin}/share/${share.shareToken}`
+      // 只在客户端访问window.location
+      if (typeof window !== 'undefined') {
+        return `${window.location.origin}/share/${share.shareToken}`
+      }
+      // 服务器端使用默认值
+      return `/share/${share.shareToken}`
     }
     return null
   }

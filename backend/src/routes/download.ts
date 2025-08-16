@@ -24,11 +24,21 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
         return { error: "Invalid download token" }
       }
 
-      // 检查令牌是否已使用
-      if (tokenRecord.used) {
-        logger.warn(`下载令牌已使用: ${params.token}`)
+      // 检查令牌使用次数
+      const usageCount = tokenRecord.usageCount ?? 0
+      const maxUsage = tokenRecord.maxUsage ?? 2
+
+      // 兼容旧数据：如果 used=true 但 usageCount=0，说明是旧数据，已经用完
+      if (tokenRecord.used && usageCount === 0) {
+        logger.warn(`下载令牌已使用（旧数据）: ${params.token}`)
         set.status = 410
         return { error: "Download token already used" }
+      }
+
+      if (usageCount >= maxUsage) {
+        logger.warn(`下载令牌使用次数已达上限: ${params.token} (${usageCount}/${maxUsage})`)
+        set.status = 410
+        return { error: "Download token usage limit exceeded" }
       }
 
       // 检查令牌是否过期
@@ -51,10 +61,14 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
         return { error: "File not found" }
       }
 
-      // 标记令牌为已使用
+      // 增加使用次数计数器
+      const newUsageCount = usageCount + 1
       await db
         .update(downloadTokens)
-        .set({ used: true })
+        .set({
+          usageCount: newUsageCount,
+          used: newUsageCount >= maxUsage // 兼容旧字段：达到最大次数时设为true
+        })
         .where(eq(downloadTokens.id, tokenRecord.id))
 
       // 获取存储配置
@@ -66,7 +80,7 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
       }
 
       logger.file('DOWNLOAD', file.originalName, file.size, true)
-      logger.info(`文件下载成功: ${file.originalName} - 用户: ${tokenRecord.userId} - 令牌: ${tokenRecord.id}`)
+      logger.info(`文件下载成功: ${file.originalName} - 用户: ${tokenRecord.userId} - 令牌: ${tokenRecord.id} - 使用次数: ${newUsageCount}/${maxUsage}`)
 
       const storageService = new StorageService(config)
       
@@ -88,13 +102,13 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
 
         const fileBuffer = fs.readFileSync(file.storagePath)
         
+        // 设置响应头，避免创建新的Response对象
         set.headers["Content-Type"] = file.mimeType || "application/octet-stream"
         set.headers["Content-Disposition"] = `attachment; filename="${encodeURIComponent(file.originalName)}"`
         set.headers["Content-Length"] = file.size.toString()
         
-        return new Response(fileBuffer, {
-          headers: set.headers
-        })
+        // 直接返回Buffer，让Elysia处理响应
+        return fileBuffer
       }
     } catch (error) {
       logger.error("文件下载失败:", error)
@@ -180,13 +194,13 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
 
         const fileBuffer = fs.readFileSync(file.storagePath)
 
+        // 设置响应头，避免创建新的Response对象
         set.headers["Content-Type"] = file.mimeType || "application/octet-stream"
         set.headers["Content-Disposition"] = `attachment; filename="${encodeURIComponent(file.originalName)}"`
         set.headers["Content-Length"] = file.size.toString()
 
-        return new Response(fileBuffer, {
-          headers: set.headers
-        })
+        // 直接返回Buffer，让Elysia处理响应
+        return fileBuffer
       }
     } catch (error) {
       logger.error("文件直链访问失败:", error)

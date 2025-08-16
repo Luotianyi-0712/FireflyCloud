@@ -9,13 +9,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Separator } from "@/components/ui/separator"
-import { HardDrive, Cloud, Save, CheckCircle, AlertCircle } from "lucide-react"
+import { HardDrive, Cloud, Save, CheckCircle, AlertCircle, Link } from "lucide-react"
 
 interface StorageConfig {
   storageType: "local" | "r2"
   r2Endpoint: string
   r2Bucket: string
+  enableMixedMode: boolean
 }
 
 export function StorageConfiguration() {
@@ -23,6 +25,7 @@ export function StorageConfiguration() {
     storageType: "local",
     r2Endpoint: "",
     r2Bucket: "",
+    enableMixedMode: false,
   })
   const [formData, setFormData] = useState({
     storageType: "local",
@@ -30,6 +33,7 @@ export function StorageConfiguration() {
     r2AccessKey: "",
     r2SecretKey: "",
     r2Bucket: "",
+    enableMixedMode: false,
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -61,6 +65,7 @@ export function StorageConfiguration() {
           r2AccessKey: "",
           r2SecretKey: "",
           r2Bucket: data.config.r2Bucket || "",
+          enableMixedMode: data.config.enableMixedMode || false,
         })
       }
     } catch (error) {
@@ -100,7 +105,7 @@ export function StorageConfiguration() {
     }
   }
 
-  const handleInputChange = (field: string, value: string) => {
+  const handleInputChange = (field: string, value: string | boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
@@ -130,7 +135,9 @@ export function StorageConfiguration() {
             </Badge>
           </CardTitle>
           <CardDescription>
-            {config.storageType === "local"
+            {config.enableMixedMode
+              ? "混合模式：同时支持本地存储和 Cloudflare R2"
+              : config.storageType === "local"
               ? "文件存储在服务器本地文件系统中"
               : `文件存储在 Cloudflare R2 存储桶：${config.r2Bucket}`}
           </CardDescription>
@@ -163,6 +170,24 @@ export function StorageConfiguration() {
             </RadioGroup>
           </div>
 
+          {/* 混合模式选项 */}
+          <div className="space-y-4">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="enableMixedMode"
+                checked={formData.enableMixedMode}
+                onCheckedChange={(checked) => handleInputChange("enableMixedMode", checked)}
+              />
+              <Label htmlFor="enableMixedMode" className="flex items-center gap-2 cursor-pointer">
+                <Link className="h-4 w-4" />
+                启用混合模式
+              </Label>
+            </div>
+            <p className="text-sm text-muted-foreground ml-6">
+              同时支持本地存储和 Cloudflare R2，可以将 R2 存储桶挂载到本地文件夹中
+            </p>
+          </div>
+
           {formData.storageType === "local" && (
             <Card className="bg-muted/50">
               <CardContent className="p-4">
@@ -177,7 +202,7 @@ export function StorageConfiguration() {
             </Card>
           )}
 
-          {formData.storageType === "r2" && (
+          {(formData.storageType === "r2" || formData.enableMixedMode) && (
             <>
               <Separator />
               <div className="space-y-4">

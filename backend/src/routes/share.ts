@@ -145,6 +145,8 @@ export const shareRoutes = new Elysia({ prefix: "/share" })
         userId: shareRecord.userId,
         token: downloadToken,
         used: false,
+        usageCount: 0, // 初始使用次数为0
+        maxUsage: 2,   // 允许使用2次
         expiresAt,
         createdAt: Date.now(),
       })

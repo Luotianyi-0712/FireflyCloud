@@ -49,6 +49,20 @@ export const storageConfig = sqliteTable("storage_config", {
   r2AccessKey: text("r2_access_key"),
   r2SecretKey: text("r2_secret_key"),
   r2Bucket: text("r2_bucket"),
+  // 新增字段支持混合模式
+  enableMixedMode: integer("enable_mixed_mode", { mode: "boolean" }).notNull().default(false),
+  updatedAt: integer("updated_at").notNull(),
+})
+
+// 新增 R2 挂载点表
+export const r2MountPoints = sqliteTable("r2_mount_points", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  folderId: text("folder_id").notNull(), // 挂载到的本地文件夹
+  r2Path: text("r2_path").notNull(), // R2 存储桶中的路径
+  mountName: text("mount_name").notNull(), // 挂载点显示名称
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 })
 
@@ -69,7 +83,9 @@ export const downloadTokens = sqliteTable("download_tokens", {
   fileId: text("file_id").notNull(),
   userId: text("user_id").notNull(),
   token: text("token").notNull().unique(),
-  used: integer("used", { mode: "boolean" }).notNull().default(false),
+  used: integer("used", { mode: "boolean" }).notNull().default(false), // 保持兼容性，但将逐步废弃
+  usageCount: integer("usage_count").notNull().default(0), // 新增：使用次数计数器
+  maxUsage: integer("max_usage").notNull().default(2), // 新增：最大使用次数，默认2次
   expiresAt: integer("expires_at").notNull(),
   createdAt: integer("created_at").notNull(),
 })
