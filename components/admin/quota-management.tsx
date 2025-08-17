@@ -46,6 +46,7 @@ import {
   Crown,
   User,
 } from "lucide-react"
+import { toast } from "sonner"
 
 interface UserQuota {
   id: string
@@ -80,8 +81,6 @@ export function QuotaManagement() {
   const [customQuota, setCustomQuota] = useState("")
   const [defaultQuota, setDefaultQuota] = useState("")
   const [description, setDescription] = useState("")
-  const [error, setError] = useState("")
-  const [success, setSuccess] = useState("")
   const { token } = useAuth()
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
@@ -105,11 +104,15 @@ export function QuotaManagement() {
         const data = await response.json()
         setQuotas(data.quotas || [])
       } else {
-        setError("获取用户配额失败")
+        toast.error("获取用户配额失败", {
+          description: "无法加载用户配额信息"
+        })
       }
     } catch (error) {
       console.error("Failed to fetch quotas:", error)
-      setError("网络错误")
+      toast.error("网络错误", {
+        description: "无法连接到服务器"
+      })
     } finally {
       setLoading(false)
     }
@@ -136,7 +139,9 @@ export function QuotaManagement() {
 
   const handleUpdateQuota = async () => {
     if (!selectedQuota || !maxStorage) {
-      setError("请填写所有必需字段")
+      toast.error("请填写所有必需字段", {
+        description: "最大存储空间是必需的"
+      })
       return
     }
 
@@ -157,22 +162,30 @@ export function QuotaManagement() {
       })
 
       if (response.ok) {
-        setSuccess("用户配额更新成功")
+        toast.success("用户配额更新成功", {
+          description: `用户 ${selectedQuota.email} 的配额已更新`
+        })
         setEditDialogOpen(false)
         setSelectedQuota(null)
         await fetchQuotas()
       } else {
         const errorData = await response.json()
-        setError(errorData.error || "更新配额失败")
+        toast.error("更新配额失败", {
+          description: errorData.error || "无法更新用户配额"
+        })
       }
     } catch (error) {
-      setError("网络错误")
+      toast.error("网络错误", {
+        description: "无法连接到服务器"
+      })
     }
   }
 
   const handleUpdateRoleConfig = async () => {
     if (!selectedRole || !defaultQuota) {
-      setError("请填写所有必需字段")
+      toast.error("请填写所有必需字段", {
+        description: "角色和默认配额都是必需的"
+      })
       return
     }
 
@@ -192,16 +205,22 @@ export function QuotaManagement() {
       })
 
       if (response.ok) {
-        setSuccess("角色默认配额更新成功")
+        toast.success("角色默认配额更新成功", {
+          description: `角色 "${selectedRole}" 的默认配额已更新`
+        })
         setRoleConfigDialogOpen(false)
         setSelectedRole("")
         await fetchRoleConfigs()
       } else {
         const errorData = await response.json()
-        setError(errorData.error || "更新角色配额失败")
+        toast.error("更新角色配额失败", {
+          description: errorData.error || "无法更新角色默认配额"
+        })
       }
     } catch (error) {
-      setError("网络错误")
+      toast.error("网络错误", {
+        description: "无法连接到服务器"
+      })
     }
   }
 
@@ -220,14 +239,20 @@ export function QuotaManagement() {
         const r2StorageFormatted = formatFileSize(data.r2Storage || 0)
         const totalFormatted = formatFileSize(data.newUsedStorage || 0)
 
-        setSuccess(`存储使用量重新计算成功！总计: ${totalFormatted} (本地: ${localStorageFormatted}, R2: ${r2StorageFormatted})`)
+        toast.success("存储使用量重新计算成功", {
+          description: `总计: ${totalFormatted} (本地: ${localStorageFormatted}, R2: ${r2StorageFormatted})`
+        })
         await fetchQuotas()
       } else {
         const errorData = await response.json()
-        setError(errorData.error || "重新计算失败")
+        toast.error("重新计算失败", {
+          description: errorData.error || "无法重新计算存储使用量"
+        })
       }
     } catch (error) {
-      setError("网络错误")
+      toast.error("网络错误", {
+        description: "无法连接到服务器"
+      })
     }
   }
 
@@ -244,14 +269,20 @@ export function QuotaManagement() {
 
       if (response.ok) {
         const data = await response.json()
-        setSuccess(`批量重新计算完成，更新了 ${data.updatedCount} 个用户`)
+        toast.success("批量重新计算完成", {
+          description: `已更新 ${data.updatedCount} 个用户的存储使用量`
+        })
         await fetchQuotas()
       } else {
         const errorData = await response.json()
-        setError(errorData.error || "批量重新计算失败")
+        toast.error("批量重新计算失败", {
+          description: errorData.error || "无法批量重新计算存储使用量"
+        })
       }
     } catch (error) {
-      setError("网络错误")
+      toast.error("网络错误", {
+        description: "无法连接到服务器"
+      })
     }
   }
 
@@ -297,20 +328,6 @@ export function QuotaManagement() {
 
   return (
     <div className="space-y-6">
-      {error && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      {success && (
-        <Alert>
-          <CheckCircle className="h-4 w-4" />
-          <AlertDescription>{success}</AlertDescription>
-        </Alert>
-      )}
-
       {/* 角色默认配额配置 */}
       <Card>
         <CardHeader>

@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { useToast } from "@/hooks/use-toast"
+import { toast } from "sonner"
 import {
   Mail,
   Send,
@@ -49,10 +49,9 @@ export function SmtpConfiguration() {
   const [previewCode, setPreviewCode] = useState("123456")
   
   const { token } = useAuth()
-  const { toast } = useToast()
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
 
-  // 默认邮件模板 - 使用字符串拼接避免 JavaScript 解析问题
+  // 默认邮件模板 - shadcn UI 风格
   const defaultTemplate = [
     '<!DOCTYPE html>',
     '<html lang="zh-CN">',
@@ -61,76 +60,129 @@ export function SmtpConfiguration() {
     '    <meta name="viewport" content="width=device-width, initial-scale=1.0">',
     '    <title>FireflyCloud 邮箱验证</title>',
     '    <style>',
+    '        * {',
+    '            margin: 0;',
+    '            padding: 0;',
+    '            box-sizing: border-box;',
+    '        }',
     '        body {',
     '            font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, sans-serif;',
     '            line-height: 1.6;',
-    '            color: #333;',
+    '            color: hsl(0, 0%, 3.9%);',
+    '            background-color: hsl(0, 0%, 96.1%);',
+    '            padding: 20px;',
+    '        }',
+    '        .email-container {',
     '            max-width: 600px;',
     '            margin: 0 auto;',
-    '            padding: 20px;',
-    '            background-color: #f5f5f5;',
-    '        }',
-    '        .container {',
-    '            background-color: #ffffff;',
-    '            border-radius: 12px;',
-    '            padding: 40px;',
-    '            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);',
+    '            background-color: hsl(0, 0%, 100%);',
+    '            border: 1px solid hsl(0, 0%, 89.8%);',
+    '            border-radius: 8px;',
+    '            overflow: hidden;',
     '        }',
     '        .header {',
+    '            background-color: hsl(0, 0%, 9%);',
+    '            color: hsl(0, 0%, 98%);',
+    '            padding: 32px;',
     '            text-align: center;',
-    '            margin-bottom: 30px;',
     '        }',
     '        .logo {',
-    '            width: 60px;',
-    '            height: 60px;',
-    '            background: linear-gradient(135deg, #3b82f6, #8b5cf6);',
-    '            border-radius: 12px;',
+    '            width: 48px;',
+    '            height: 48px;',
+    '            background-color: hsl(0, 0%, 98%);',
+    '            border-radius: 6px;',
     '            display: inline-flex;',
     '            align-items: center;',
     '            justify-content: center;',
-    '            margin-bottom: 20px;',
+    '            margin-bottom: 16px;',
     '        }',
     '        .title {',
-    '            color: #1f2937;',
-    '            font-size: 28px;',
-    '            font-weight: bold;',
+    '            font-size: 24px;',
+    '            font-weight: 600;',
     '            margin: 0;',
     '        }',
-    '        .code-container {',
-    '            background: linear-gradient(135deg, #f3f4f6, #e5e7eb);',
-    '            border-radius: 12px;',
-    '            padding: 30px;',
-    '            text-align: center;',
-    '            margin: 30px 0;',
-    '            border: 2px dashed #d1d5db;',
+    '        .subtitle {',
+    '            color: hsl(0, 0%, 71%);',
+    '            font-size: 14px;',
+    '            margin: 4px 0 0 0;',
+    '            font-weight: 400;',
     '        }',
-    '        .verification-code {',
-    '            font-size: 36px;',
-    '            font-weight: bold;',
-    '            color: #3b82f6;',
-    '            letter-spacing: 8px;',
-    '            font-family: \'Courier New\', monospace;',
+    '        .content {',
+    '            padding: 32px;',
+    '        }',
+    '        .greeting {',
+    '            font-size: 18px;',
+    '            font-weight: 600;',
+    '            margin-bottom: 16px;',
+    '            color: hsl(0, 0%, 3.9%);',
+    '        }',
+    '        .description {',
+    '            color: hsl(0, 0%, 45.1%);',
+    '            margin-bottom: 24px;',
+    '            line-height: 1.5;',
+    '        }',
+    '        .code-container {',
+    '            background-color: hsl(0, 0%, 96.1%);',
+    '            border: 1px solid hsl(0, 0%, 89.8%);',
+    '            border-radius: 8px;',
+    '            padding: 24px;',
+    '            text-align: center;',
+    '            margin: 24px 0;',
+    '        }',
+    '        .code {',
+    '            font-size: 32px;',
+    '            font-weight: 700;',
+    '            color: hsl(0, 0%, 9%);',
+    '            letter-spacing: 6px;',
+    '            margin-bottom: 8px;',
+    '            font-family: ui-monospace, monospace;',
+    '        }',
+    '        .code-label {',
+    '            color: hsl(0, 0%, 45.1%);',
+    '            font-size: 14px;',
+    '            font-weight: 500;',
+    '        }',
+    '        .warning {',
+    '            background-color: hsl(0, 0%, 98%);',
+    '            border: 1px solid hsl(0, 0%, 89.8%);',
+    '            border-left: 4px solid hsl(38, 92%, 50%);',
+    '            border-radius: 6px;',
+    '            padding: 16px;',
+    '            margin: 24px 0;',
+    '        }',
+    '        .footer {',
+    '            background-color: hsl(0, 0%, 98%);',
+    '            padding: 24px 32px;',
+    '            text-align: center;',
+    '            border-top: 1px solid hsl(0, 0%, 89.8%);',
+    '            color: hsl(0, 0%, 45.1%);',
+    '            font-size: 14px;',
     '        }',
     '    </style>',
     '</head>',
     '<body>',
-    '    <div class="container">',
+    '    <div class="email-container">',
     '        <div class="header">',
-    '            <div class="logo">📧</div>',
+    '            <div class="logo">✉️</div>',
     '            <h1 class="title">FireflyCloud</h1>',
-    '            <p>现代化云存储解决方案</p>',
+    '            <p class="subtitle">现代化云存储解决方案</p>',
     '        </div>',
-    '        ',
     '        <div class="content">',
-    '            <p>您好！</p>',
-    '            <p>感谢您注册 FireflyCloud 账户。请使用以下验证码完成注册：</p>',
-    '            ',
+    '            <p class="greeting">您好！</p>',
+    '            <p class="description">感谢您注册 FireflyCloud 账户。为了确保您的邮箱地址有效，请使用以下验证码完成注册：</p>',
     '            <div class="code-container">',
-    '                <div class="verification-code">{{CODE}}</div>',
-    '                <div>邮箱验证码</div>',
+    '                <div class="code">{{CODE}}</div>',
+    '                <div class="code-label">邮箱验证码</div>',
     '            </div>',
-    '            ',
-    '            <p>此验证码将在 10 分钟后过期，请勿将验证码分享给他人。</p>',
+    '            <p class="description">请在注册页面输入此验证码以完成账户创建。</p>',
+    '            <div class="warning">',
+    '                <div style="color: hsl(0, 0%, 9%); font-weight: 600; font-size: 14px; margin-bottom: 8px;">重要提示</div>',
+    '                <div style="color: hsl(0, 0%, 45.1%); font-size: 14px;">此验证码将在 10 分钟后过期，请勿将验证码分享给他人。</div>',
+    '            </div>',
+    '        </div>',
+    '        <div class="footer">',
+    '            <p>此邮件由 FireflyCloud 系统自动发送，请勿回复。</p>',
+    '            <p style="margin-top: 16px; color: hsl(0, 0%, 64%); font-size: 12px;">© 2024 FireflyCloud. 保留所有权利。</p>',
     '        </div>',
     '    </div>',
     '</body>',
@@ -217,19 +269,16 @@ export function SmtpConfiguration() {
       })
 
       if (response.ok) {
-        toast({
-          title: "配置已保存",
-          description: "SMTP 配置已成功更新",
+        toast.success("SMTP 配置已成功保存", {
+          description: "配置已更新并生效"
         })
       } else {
         throw new Error("Failed to save config")
       }
     } catch (error) {
       console.error("Failed to save SMTP config:", error)
-      toast({
-        title: "保存失败",
-        description: "无法保存 SMTP 配置",
-        variant: "destructive",
+      toast.error("保存失败", {
+        description: "无法保存 SMTP 配置，请稍后重试"
       })
     } finally {
       setSaving(false)
@@ -238,10 +287,8 @@ export function SmtpConfiguration() {
 
   const testSmtp = async () => {
     if (!testEmail) {
-      toast({
-        title: "请输入测试邮箱",
-        description: "请输入一个有效的邮箱地址进行测试",
-        variant: "destructive",
+      toast.error("请输入测试邮箱", {
+        description: "请输入一个有效的邮箱地址进行测试"
       })
       return
     }
@@ -267,9 +314,8 @@ export function SmtpConfiguration() {
 
       if (response.ok) {
         await response.json() // 确保响应被完全读取
-        toast({
-          title: "测试邮件已发送",
-          description: `测试邮件已发送到 ${testEmail}`,
+        toast.success("测试邮件已发送", {
+          description: `测试邮件已发送到 ${testEmail}，请查收`
         })
       } else {
         const errorData = await response.json()
@@ -278,10 +324,8 @@ export function SmtpConfiguration() {
       }
     } catch (error) {
       console.error("Failed to test SMTP:", error)
-      toast({
-        title: "测试失败",
-        description: "无法发送测试邮件，请检查配置",
-        variant: "destructive",
+      toast.error("测试失败", {
+        description: "无法发送测试邮件，请检查配置"
       })
     } finally {
       setTesting(false)

@@ -2,8 +2,9 @@ import { drizzle } from "drizzle-orm/bun-sqlite"
 import { Database } from "bun:sqlite"
 import * as schema from "./schema"
 import { logger } from "../utils/logger"
+import { generateAdminPassword } from "../utils/password"
 
-const sqlite = new Database(process.env.DATABASE_PATH || "./netdisk.db")
+const sqlite = new Database(process.env.DATABASE_URL || "./netdisk.db")
 export const db = drizzle(sqlite, { schema })
 
 // Initialize database with auto-migration
@@ -78,7 +79,7 @@ async function initializeDatabase() {
         email TEXT NOT NULL,
         code TEXT NOT NULL,
         expires_at INTEGER NOT NULL,
-        used INTEGER DEFAULT 0,
+        used INTEGER NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL
       );
 
@@ -180,6 +181,52 @@ async function initializeDatabase() {
       sqlite.exec('ALTER TABLE files ADD COLUMN folder_id TEXT')
       logger.database('ALTER', 'files')
       logger.info('folder_id 字段添加成功')
+    }
+
+    // 检查并添加 enable_mixed_mode 字段到 storage_config 表
+    const storageConfigColumns = sqlite.prepare("PRAGMA table_info(storage_config)").all()
+    const hasEnableMixedMode = storageConfigColumns.some(col => col.name === 'enable_mixed_mode')
+
+    if (!hasEnableMixedMode) {
+      logger.info('添加 enable_mixed_mode 字段到 storage_config 表...')
+      sqlite.exec('ALTER TABLE storage_config ADD COLUMN enable_mixed_mode INTEGER NOT NULL DEFAULT 0')
+      logger.database('ALTER', 'storage_config')
+      logger.info('enable_mixed_mode 字段添加成功')
+    }
+
+    // 检查并修复 email_verification_codes 表的 used 字段约束
+    const emailVerificationExists = sqlite.prepare(`
+      SELECT name FROM sqlite_master
+      WHERE type='table' AND name='email_verification_codes'
+    `).get()
+
+    if (emailVerificationExists) {
+      const emailVerificationColumns = sqlite.prepare("PRAGMA table_info(email_verification_codes)").all()
+      const usedColumn = emailVerificationColumns.find(col => col.name === 'used')
+
+      if (usedColumn && usedColumn.notnull === 0) {
+        logger.info('修复 email_verification_codes 表的 used 字段约束...')
+        // 由于 SQLite 不支持直接修改列约束，我们需要重建表
+        sqlite.exec(`
+          CREATE TABLE email_verification_codes_new (
+            id TEXT PRIMARY KEY,
+            email TEXT NOT NULL,
+            code TEXT NOT NULL,
+            expires_at INTEGER NOT NULL,
+            used INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL
+          );
+
+          INSERT INTO email_verification_codes_new
+          SELECT id, email, code, expires_at, COALESCE(used, 0), created_at
+          FROM email_verification_codes;
+
+          DROP TABLE email_verification_codes;
+          ALTER TABLE email_verification_codes_new RENAME TO email_verification_codes;
+        `)
+        logger.database('REBUILD', 'email_verification_codes')
+        logger.info('email_verification_codes 表结构修复完成')
+      }
     }
 
     // 检查并升级 download_tokens 表结构
@@ -308,27 +355,27 @@ async function initializeDatabase() {
     sqlite.exec(`
       INSERT OR IGNORE INTO storage_config (storage_type, updated_at)
       VALUES ('local', ${Date.now()});
-
-      INSERT OR IGNORE INTO users (id, email, password, role, email_verified, created_at, updated_at)
-      VALUES ('admin', 'admin@cialloo.site', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin', 1, ${Date.now()}, ${Date.now()});
     `)
+
+    // 初始化管理员账户
+    await initializeAdminAccount()
 
     // 初始化 SMTP 配置
     const smtpConfigExists = sqlite.prepare("SELECT COUNT(*) as count FROM smtp_config WHERE id = 1").get()
     if (smtpConfigExists.count === 0) {
-      // 检查环境变量中是否有 SMTP 配置
+      // 检查环境变量中是否有 SMTP 配置（可选）
       const hasEnvConfig = process.env.SMTP_HOST && process.env.SMTP_PORT &&
                           process.env.SMTP_USER && process.env.SMTP_PASS
 
       if (hasEnvConfig) {
-        // 从环境变量初始化配置
+        // 从环境变量初始化配置（兼容旧版本）
         sqlite.exec(`
           INSERT INTO smtp_config (id, enabled, host, port, user, pass, secure, updated_at)
           VALUES (1, 1, '${process.env.SMTP_HOST}', ${parseInt(process.env.SMTP_PORT || "465")},
                   '${process.env.SMTP_USER}', '${process.env.SMTP_PASS}', 1, ${Date.now()})
         `)
         logger.database('INSERT', 'smtp_config')
-        logger.info('已从环境变量初始化 SMTP 配置')
+        logger.info('已从环境变量初始化 SMTP 配置（建议在管理面板中管理）')
       } else {
         // 创建默认的禁用配置
         sqlite.exec(`
@@ -336,12 +383,15 @@ async function initializeDatabase() {
           VALUES (1, 0, '', 465, '', '', 1, ${Date.now()})
         `)
         logger.database('INSERT', 'smtp_config')
-        logger.info('已创建默认 SMTP 配置（禁用状态）')
+        logger.info('已创建默认 SMTP 配置（禁用状态），请在管理面板中配置')
       }
     }
 
     // 初始化用户配额系统
     await initializeQuotaSystem()
+
+    // 验证所有表是否正确创建
+    await validateDatabaseTables()
 
     logger.info('数据库初始化完成')
   } catch (error) {
@@ -413,6 +463,105 @@ async function initializeQuotaSystem() {
     logger.info('用户配额系统初始化完成')
   } catch (error) {
     logger.error('用户配额系统初始化失败:', error)
+    throw error
+  }
+}
+
+// 验证数据库表是否正确创建
+async function validateDatabaseTables() {
+  try {
+    logger.info('🔍 验证数据库表结构...')
+
+    // 定义所有应该存在的表
+    const requiredTables = [
+      'users',
+      'folders',
+      'files',
+      'storage_config',
+      'r2_mount_points',
+      'email_verification_codes',
+      'smtp_config',
+      'download_tokens',
+      'file_direct_links',
+      'file_shares',
+      'user_quotas',
+      'role_quota_config'
+    ]
+
+    // 获取数据库中实际存在的表
+    const existingTables = sqlite.prepare(`
+      SELECT name FROM sqlite_master
+      WHERE type='table' AND name NOT LIKE 'sqlite_%'
+    `).all().map(row => row.name)
+
+    // 检查缺失的表
+    const missingTables = requiredTables.filter(table => !existingTables.includes(table))
+
+    if (missingTables.length > 0) {
+      logger.error(`❌ 缺失的数据库表: ${missingTables.join(', ')}`)
+      throw new Error(`数据库表不完整，缺失: ${missingTables.join(', ')}`)
+    }
+
+    // 检查额外的表（可能是旧版本遗留）
+    const extraTables = existingTables.filter(table => !requiredTables.includes(table))
+    if (extraTables.length > 0) {
+      logger.info(`ℹ️ 发现额外的表（可能是旧版本遗留）: ${extraTables.join(', ')}`)
+    }
+
+    logger.info(`✅ 数据库表验证通过，共 ${requiredTables.length} 个表`)
+
+    // 记录每个表的记录数
+    for (const table of requiredTables) {
+      try {
+        const count = sqlite.prepare(`SELECT COUNT(*) as count FROM ${table}`).get()
+        logger.debug(`  ${table}: ${count.count} 条记录`)
+      } catch (error) {
+        logger.warn(`  ${table}: 无法获取记录数 - ${error.message}`)
+      }
+    }
+
+  } catch (error) {
+    logger.error('数据库表验证失败:', error)
+    throw error
+  }
+}
+
+// 初始化管理员账户
+async function initializeAdminAccount() {
+  try {
+    logger.info('🔧 初始化管理员账户...')
+
+    // 检查管理员账户是否已存在
+    const adminExists = sqlite.prepare("SELECT COUNT(*) as count FROM users WHERE id = 'admin'").get()
+
+    if (adminExists.count === 0) {
+      // 生成随机密码
+      const { plainPassword, hashedPassword } = await generateAdminPassword()
+
+      // 创建管理员账户
+      sqlite.exec(`
+        INSERT INTO users (id, email, password, role, email_verified, created_at, updated_at)
+        VALUES ('admin', 'admin@cialloo.site', '${hashedPassword}', 'admin', 1, ${Date.now()}, ${Date.now()})
+      `)
+
+      logger.database('INSERT', 'users')
+      logger.info('✅ 管理员账户创建成功')
+
+      // 在控制台显示登录信息
+      console.log('\n' + '='.repeat(80))
+      console.log('🔐 管理员账户信息')
+      console.log('='.repeat(80))
+      console.log(`📧 登录邮箱: admin@cialloo.site`)
+      console.log(`🔑 登录密码: ${plainPassword}`)
+      console.log('='.repeat(80))
+      console.log('⚠️  请妥善保存上述密码，首次登录后建议在管理面板中修改密码')
+      console.log('='.repeat(80) + '\n')
+
+    } else {
+      logger.info('管理员账户已存在，跳过创建')
+    }
+  } catch (error) {
+    logger.error('管理员账户初始化失败:', error)
     throw error
   }
 }

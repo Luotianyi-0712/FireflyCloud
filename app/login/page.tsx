@@ -28,11 +28,28 @@ export default function LoginPage() {
     setError("")
     setLoading(true)
 
+    // 基本验证
+    if (!email.trim()) {
+      setError("请输入邮箱地址")
+      setLoading(false)
+      return
+    }
+
+    if (!password.trim()) {
+      setError("请输入密码")
+      setLoading(false)
+      return
+    }
+
     try {
       await login(email, password)
       router.push("/dashboard")
     } catch (err) {
-      setError(err instanceof Error ? err.message : "登录失败")
+      if (err instanceof Error) {
+        setError(err.message)
+      } else {
+        setError("登录失败，请检查您的网络连接")
+      }
     } finally {
       setLoading(false)
     }
@@ -74,6 +91,8 @@ export default function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="请输入您的邮箱地址"
                 required
+                disabled={loading}
+                className={error && !email.trim() ? "border-red-500 focus:border-red-500" : ""}
               />
             </div>
 
@@ -87,6 +106,8 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="请输入您的密码"
                   required
+                  disabled={loading}
+                  className={error && !password.trim() ? "border-red-500 focus:border-red-500" : ""}
                 />
                 <Button
                   type="button"
@@ -94,6 +115,7 @@ export default function LoginPage() {
                   size="sm"
                   className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                   onClick={() => setShowPassword(!showPassword)}
+                  disabled={loading}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </Button>

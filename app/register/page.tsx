@@ -108,19 +108,35 @@ export default function RegisterPage() {
     e.preventDefault()
     setError("")
 
-    // 如果启用了 SMTP，则需要验证码
-    if (smtpEnabled && !verificationCode) {
-      setError("请输入邮箱验证码")
+    // 基本验证
+    if (!email.trim()) {
+      setError("请输入邮箱地址")
+      return
+    }
+
+    if (!password.trim()) {
+      setError("请输入密码")
+      return
+    }
+
+    if (!confirmPassword.trim()) {
+      setError("请确认密码")
       return
     }
 
     if (password !== confirmPassword) {
-      setError("密码不匹配")
+      setError("两次输入的密码不一致")
       return
     }
 
     if (password.length < 6) {
       setError("密码长度至少需要6个字符")
+      return
+    }
+
+    // 如果启用了 SMTP，则需要验证码
+    if (smtpEnabled && !verificationCode.trim()) {
+      setError("请输入邮箱验证码")
       return
     }
 
@@ -152,10 +168,14 @@ export default function RegisterPage() {
         localStorage.setItem("token", data.token)
         router.push("/dashboard")
       } else {
-        setError(data.error || "注册失败")
+        setError(data.error || "注册失败，请稍后重试")
       }
     } catch (err) {
-      setError("网络错误，请稍后重试")
+      if (err instanceof Error) {
+        setError(err.message)
+      } else {
+        setError("注册失败，请检查您的网络连接")
+      }
     } finally {
       setLoading(false)
     }

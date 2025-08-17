@@ -47,6 +47,7 @@ import {
   RefreshCw,
   Plus,
 } from "lucide-react"
+import { toast } from "sonner"
 
 interface MountPoint {
   id: string
@@ -88,8 +89,6 @@ export function R2MountManagement() {
   const [selectedR2Path, setSelectedR2Path] = useState("")
   const [mountName, setMountName] = useState("")
   const [editingMount, setEditingMount] = useState<MountPoint | null>(null)
-  const [error, setError] = useState("")
-  const [success, setSuccess] = useState("")
   const { token } = useAuth()
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
@@ -113,11 +112,15 @@ export function R2MountManagement() {
         const data = await response.json()
         setMounts(data.mounts || [])
       } else {
-        setError("获取挂载点失败")
+        toast.error("获取挂载点失败", {
+          description: "无法加载 R2 挂载点列表"
+        })
       }
     } catch (error) {
       console.error("Failed to fetch mounts:", error)
-      setError("网络错误")
+      toast.error("网络错误", {
+        description: "无法连接到服务器"
+      })
     } finally {
       setLoading(false)
     }
@@ -166,7 +169,9 @@ export function R2MountManagement() {
 
   const handleCreateMount = async () => {
     if (!selectedUserId || !selectedFolderId || !selectedR2Path || !mountName.trim()) {
-      setError("请填写所有必需字段")
+      toast.error("请填写所有必需字段", {
+        description: "用户、文件夹、R2路径和挂载名称都是必需的"
+      })
       return
     }
 
@@ -186,22 +191,30 @@ export function R2MountManagement() {
       })
 
       if (response.ok) {
-        setSuccess("R2 挂载点创建成功")
+        toast.success("R2 挂载点创建成功", {
+          description: `挂载点 "${mountName}" 已成功创建`
+        })
         setCreateDialogOpen(false)
         resetCreateForm()
         await fetchMounts()
       } else {
         const errorData = await response.json()
-        setError(errorData.error || "创建挂载点失败")
+        toast.error("创建挂载点失败", {
+          description: errorData.error || "无法创建 R2 挂载点"
+        })
       }
     } catch (error) {
-      setError("网络错误")
+      toast.error("网络错误", {
+        description: "无法连接到服务器"
+      })
     }
   }
 
   const handleUpdateMount = async () => {
     if (!editingMount || !mountName.trim()) {
-      setError("请填写所有必需字段")
+      toast.error("请填写所有必需字段", {
+        description: "挂载名称不能为空"
+      })
       return
     }
 
@@ -220,16 +233,22 @@ export function R2MountManagement() {
       })
 
       if (response.ok) {
-        setSuccess("挂载点更新成功")
+        toast.success("挂载点更新成功", {
+          description: `挂载点 "${mountName}" 已成功更新`
+        })
         setEditDialogOpen(false)
         setEditingMount(null)
         await fetchMounts()
       } else {
         const errorData = await response.json()
-        setError(errorData.error || "更新挂载点失败")
+        toast.error("更新挂载点失败", {
+          description: errorData.error || "无法更新挂载点"
+        })
       }
     } catch (error) {
-      setError("网络错误")
+      toast.error("网络错误", {
+        description: "无法连接到服务器"
+      })
     }
   }
 
@@ -245,14 +264,20 @@ export function R2MountManagement() {
       })
 
       if (response.ok) {
-        setSuccess("挂载点删除成功")
+        toast.success("挂载点删除成功", {
+          description: "挂载点已从系统中移除"
+        })
         await fetchMounts()
       } else {
         const errorData = await response.json()
-        setError(errorData.error || "删除挂载点失败")
+        toast.error("删除挂载点失败", {
+          description: errorData.error || "无法删除挂载点"
+        })
       }
     } catch (error) {
-      setError("网络错误")
+      toast.error("网络错误", {
+        description: "无法连接到服务器"
+      })
     }
   }
 
@@ -272,14 +297,20 @@ export function R2MountManagement() {
       })
 
       if (response.ok) {
-        setSuccess(`挂载点已${mount.enabled ? "禁用" : "启用"}`)
+        toast.success(`挂载点已${mount.enabled ? "禁用" : "启用"}`, {
+          description: `挂载点 "${mount.mountName}" 状态已更新`
+        })
         await fetchMounts()
       } else {
         const errorData = await response.json()
-        setError(errorData.error || "操作失败")
+        toast.error("操作失败", {
+          description: errorData.error || "无法更新挂载点状态"
+        })
       }
     } catch (error) {
-      setError("网络错误")
+      toast.error("网络错误", {
+        description: "无法连接到服务器"
+      })
     }
   }
 
@@ -289,7 +320,6 @@ export function R2MountManagement() {
     setSelectedR2Path("")
     setMountName("")
     setSelectedUserFolders([])
-    setError("")
   }
 
   const handleSelectR2Path = (path: string) => {
@@ -322,20 +352,6 @@ export function R2MountManagement() {
 
   return (
     <div className="space-y-6">
-      {error && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      {success && (
-        <Alert>
-          <CheckCircle className="h-4 w-4" />
-          <AlertDescription>{success}</AlertDescription>
-        </Alert>
-      )}
-
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">

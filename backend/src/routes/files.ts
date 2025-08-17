@@ -354,10 +354,15 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
           fs.writeFileSync(filePath, content, "utf8")
         } else {
           // R2存储需要重新上传文件
-          // 创建一个临时File对象
-          const blob = new Blob([contentBuffer], { type: file.mimeType })
-          const tempFile = new File([blob], file.originalName, { type: file.mimeType })
-          await storageService.uploadFile(tempFile, file.storagePath)
+          // 创建一个兼容的文件对象（服务端环境）
+          const fileObject = {
+            name: file.originalName,
+            type: file.mimeType,
+            size: contentBuffer.length,
+            arrayBuffer: async () => contentBuffer.buffer.slice(contentBuffer.byteOffset, contentBuffer.byteOffset + contentBuffer.byteLength)
+          } as File
+
+          await storageService.uploadFile(fileObject, file.storagePath)
         }
 
         // 更新文件大小

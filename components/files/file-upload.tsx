@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Card, CardContent } from "@/components/ui/card"
-import { Upload, X, File, CheckCircle } from "lucide-react"
+import { Upload, X, File as FileIcon, CheckCircle } from "lucide-react"
 import { useDropzone } from "react-dropzone"
 
 interface FileUploadProps {
@@ -155,7 +155,7 @@ export function FileUpload({ onUploadSuccess, currentFolderId }: FileUploadProps
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3 flex-1">
-                      <File className="h-8 w-8 text-muted-foreground" />
+                      <FileIcon className="h-8 w-8 text-muted-foreground" />
                       <div className="flex-1 min-w-0">
                         <p className="font-medium truncate">{fileItem.file.name}</p>
                         <p className="text-sm text-muted-foreground">{formatFileSize(fileItem.file.size)}</p>

@@ -65,7 +65,7 @@ export function generateVerificationCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString()
 }
 
-// 邮件HTML模板
+// 邮件HTML模板 - shadcn UI 风格
 function getEmailTemplate(code: string, email: string): string {
   return `
 <!DOCTYPE html>
@@ -75,144 +75,193 @@ function getEmailTemplate(code: string, email: string): string {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FireflyCloud 邮箱验证</title>
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             line-height: 1.6;
-            color: #333;
+            color: hsl(0, 0%, 3.9%);
+            background-color: hsl(0, 0%, 96.1%);
+            padding: 20px;
+        }
+        .email-container {
             max-width: 600px;
             margin: 0 auto;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            background-color: #ffffff;
-            border-radius: 12px;
-            padding: 40px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            background-color: hsl(0, 0%, 100%);
+            border: 1px solid hsl(0, 0%, 89.8%);
+            border-radius: 8px;
+            overflow: hidden;
         }
         .header {
+            background-color: hsl(0, 0%, 9%);
+            color: hsl(0, 0%, 98%);
+            padding: 32px;
             text-align: center;
-            margin-bottom: 30px;
         }
         .logo {
-            width: 60px;
-            height: 60px;
-            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-            border-radius: 12px;
+            width: 48px;
+            height: 48px;
+            background-color: hsl(0, 0%, 98%);
+            border-radius: 6px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            margin-bottom: 20px;
+            margin-bottom: 16px;
         }
         .logo svg {
-            width: 30px;
-            height: 30px;
-            color: white;
+            width: 24px;
+            height: 24px;
+            color: hsl(0, 0%, 9%);
         }
         .title {
-            color: #1f2937;
-            font-size: 28px;
-            font-weight: bold;
+            font-size: 24px;
+            font-weight: 600;
             margin: 0;
         }
         .subtitle {
-            color: #6b7280;
-            font-size: 16px;
-            margin: 8px 0 0 0;
+            color: hsl(0, 0%, 71%);
+            font-size: 14px;
+            margin: 4px 0 0 0;
+            font-weight: 400;
         }
         .content {
-            margin: 30px 0;
+            padding: 32px;
         }
         .greeting {
             font-size: 18px;
-            color: #374151;
-            margin-bottom: 20px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: hsl(0, 0%, 3.9%);
+        }
+        .description {
+            color: hsl(0, 0%, 45.1%);
+            margin-bottom: 24px;
+            line-height: 1.5;
         }
         .code-container {
-            background: linear-gradient(135deg, #f3f4f6, #e5e7eb);
-            border-radius: 12px;
-            padding: 30px;
+            background-color: hsl(0, 0%, 96.1%);
+            border: 1px solid hsl(0, 0%, 89.8%);
+            border-radius: 8px;
+            padding: 24px;
             text-align: center;
-            margin: 30px 0;
-            border: 2px dashed #d1d5db;
+            margin: 24px 0;
         }
         .code {
-            font-size: 36px;
-            font-weight: bold;
-            color: #3b82f6;
-            letter-spacing: 8px;
-            font-family: 'Courier New', monospace;
+            font-size: 32px;
+            font-weight: 700;
+            color: hsl(0, 0%, 9%);
+            letter-spacing: 6px;
+            margin-bottom: 8px;
+            font-family: ui-monospace, SFMono-Regular, 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace;
         }
         .code-label {
-            color: #6b7280;
+            color: hsl(0, 0%, 45.1%);
             font-size: 14px;
-            margin-top: 10px;
+            font-weight: 500;
         }
         .warning {
-            background-color: #fef3c7;
-            border: 1px solid #f59e0b;
-            border-radius: 8px;
+            background-color: hsl(0, 0%, 98%);
+            border: 1px solid hsl(0, 0%, 89.8%);
+            border-left: 4px solid hsl(38, 92%, 50%);
+            border-radius: 6px;
             padding: 16px;
-            margin: 20px 0;
+            margin: 24px 0;
+        }
+        .warning-title {
+            color: hsl(0, 0%, 9%);
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 8px;
         }
         .warning-text {
-            color: #92400e;
+            color: hsl(0, 0%, 45.1%);
             font-size: 14px;
-            margin: 0;
+            line-height: 1.5;
+        }
+        .warning-list {
+            margin: 8px 0 0 16px;
+            color: hsl(0, 0%, 45.1%);
         }
         .footer {
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 1px solid #e5e7eb;
+            background-color: hsl(0, 0%, 98%);
+            padding: 24px 32px;
             text-align: center;
-            color: #6b7280;
+            border-top: 1px solid hsl(0, 0%, 89.8%);
+            color: hsl(0, 0%, 45.1%);
             font-size: 14px;
         }
-        .footer a {
-            color: #3b82f6;
+        .footer-link {
+            color: hsl(0, 0%, 9%);
             text-decoration: none;
+            font-weight: 500;
+        }
+        .footer-link:hover {
+            text-decoration: underline;
+        }
+        .copyright {
+            margin-top: 16px;
+            color: hsl(0, 0%, 64%);
+            font-size: 12px;
+        }
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+            .content, .footer {
+                padding: 20px;
+            }
+            .header {
+                padding: 24px 20px;
+            }
+            .code {
+                font-size: 24px;
+                letter-spacing: 4px;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="email-container">
         <div class="header">
             <div class="logo">
                 <svg viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2C13.1 2 14 2.9 14 4C14 5.1 13.1 6 12 6C10.9 6 10 5.1 10 4C10 2.9 10.9 2 12 2ZM21 9V7L15 1H5C3.89 1 3 1.89 3 3V19C3 20.1 3.9 21 5 21H11V19H5V3H13V9H21Z"/>
+                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
             </div>
             <h1 class="title">FireflyCloud</h1>
             <p class="subtitle">现代化云存储解决方案</p>
         </div>
-        
+
         <div class="content">
             <p class="greeting">您好！</p>
-            <p>感谢您注册 FireflyCloud 账户。为了确保您的邮箱地址有效，请使用以下验证码完成注册：</p>
-            
+            <p class="description">感谢您注册 FireflyCloud 账户。为了确保您的邮箱地址有效，请使用以下验证码完成注册：</p>
+
             <div class="code-container">
                 <div class="code">${code}</div>
                 <div class="code-label">邮箱验证码</div>
             </div>
-            
-            <p>请在注册页面输入此验证码以完成账户创建。</p>
-            
+
+            <p class="description">请在注册页面输入此验证码以完成账户创建。</p>
+
             <div class="warning">
-                <p class="warning-text">
-                    <strong>重要提示：</strong>
-                    <br>• 此验证码将在 10 分钟后过期
-                    <br>• 请勿将验证码分享给他人
-                    <br>• 如果您没有注册 FireflyCloud 账户，请忽略此邮件
-                </p>
+                <div class="warning-title">重要提示</div>
+                <div class="warning-text">
+                    <ul class="warning-list">
+                        <li>此验证码将在 10 分钟后过期</li>
+                        <li>请勿将验证码分享给他人</li>
+                        <li>如果您没有注册 FireflyCloud 账户，请忽略此邮件</li>
+                    </ul>
+                </div>
             </div>
         </div>
-        
+
         <div class="footer">
             <p>此邮件由 FireflyCloud 系统自动发送，请勿回复。</p>
-            <p>如有疑问，请访问 <a href="#">帮助中心</a> 或联系客服。</p>
-            <p style="margin-top: 20px; color: #9ca3af;">
-                © 2024 FireflyCloud. 保留所有权利。
-            </p>
+            <p>如有疑问，请访问 <a href="#" class="footer-link">帮助中心</a> 或联系客服。</p>
+            <p class="copyright">© 2024 FireflyCloud. 保留所有权利。</p>
         </div>
     </div>
 </body>

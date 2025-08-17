@@ -220,15 +220,17 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
         // Find user
         const user = await db.select().from(users).where(eq(users.email, email)).get()
         if (!user) {
+          logger.warn(`登录失败: 用户不存在 - ${email}`)
           set.status = 401
-          return { error: "Invalid credentials" }
+          return { error: "用户名或密码不正确" }
         }
 
         // Verify password
         const isValid = await bcrypt.compare(password, user.password)
         if (!isValid) {
+          logger.warn(`登录失败: 密码错误 - ${email}`)
           set.status = 401
-          return { error: "Invalid credentials" }
+          return { error: "用户名或密码不正确" }
         }
 
         // Generate token
@@ -247,8 +249,9 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
           },
         }
       } catch (error) {
+        logger.error("登录失败:", error)
         set.status = 500
-        return { error: "Login failed" }
+        return { error: "登录失败，请稍后重试" }
       }
     },
     {
@@ -262,19 +265,19 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
     try {
       if (!bearer) {
         set.status = 401
-        return { error: "No token provided" }
+        return { error: "未提供认证令牌" }
       }
 
       const payload = await jwt.verify(bearer)
       if (!payload) {
         set.status = 401
-        return { error: "Invalid token" }
+        return { error: "认证令牌无效" }
       }
 
       const user = await db.select().from(users).where(eq(users.id, payload.userId)).get()
       if (!user) {
         set.status = 404
-        return { error: "User not found" }
+        return { error: "用户不存在" }
       }
 
       return {
@@ -285,21 +288,22 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
         },
       }
     } catch (error) {
+      logger.error("用户认证失败:", error)
       set.status = 401
-      return { error: "Authentication failed" }
+      return { error: "认证失败" }
     }
   })
   .get("/quota", async ({ jwt, bearer, set }) => {
     try {
       if (!bearer) {
         set.status = 401
-        return { error: "No token provided" }
+        return { error: "未提供认证令牌" }
       }
 
       const payload = await jwt.verify(bearer)
       if (!payload) {
         set.status = 401
-        return { error: "Invalid token" }
+        return { error: "认证令牌无效" }
       }
 
       // 获取用户配额信息
@@ -326,7 +330,7 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
         }
 
         set.status = 404
-        return { error: "Quota not found" }
+        return { error: "配额信息未找到" }
       }
 
       return {
@@ -343,20 +347,20 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
     } catch (error) {
       logger.error("获取用户配额失败:", error)
       set.status = 500
-      return { error: "Failed to get quota" }
+      return { error: "获取配额信息失败" }
     }
   })
   .get("/quota-debug", async ({ jwt, bearer, set }) => {
     try {
       if (!bearer) {
         set.status = 401
-        return { error: "No token provided" }
+        return { error: "未提供认证令牌" }
       }
 
       const payload = await jwt.verify(bearer)
       if (!payload) {
         set.status = 401
-        return { error: "Invalid token" }
+        return { error: "认证令牌无效" }
       }
 
       logger.info(`调试配额信息: 用户 ${payload.userId}`)
@@ -441,6 +445,6 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
     } catch (error) {
       logger.error("获取配额调试信息失败:", error)
       set.status = 500
-      return { error: "Failed to get quota debug info" }
+      return { error: "获取配额调试信息失败" }
     }
   })

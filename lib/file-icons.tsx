@@ -1,5 +1,5 @@
 import {
-  File,
+  File as FileIcon,
   FileText,
   FileImage,
   FileVideo,
@@ -98,7 +98,7 @@ export function getFileIcon(mimeType: string, fileName: string = "", props: File
   }
   
   // 默认文件图标
-  return <File className={`${baseClassName} text-gray-400`} />
+  return <FileIcon className={`${baseClassName} text-gray-400`} />
 }
 
 // 获取文件类型描述

@@ -8,6 +8,7 @@ import { nanoid } from "nanoid"
 import { sendVerificationEmail } from "../services/email"
 import { StorageService } from "../services/storage"
 import { logger } from "../utils/logger"
+import { hashPassword, verifyPassword, validatePasswordStrength } from "../utils/password"
 
 export const adminRoutes = new Elysia({ prefix: "/admin" })
   .use(
@@ -353,15 +354,34 @@ async function sendTestEmail(email: string, code: string, config: any): Promise<
     logger.info('SMTP 连接验证成功')
 
     const template = config.emailTemplate || `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h2>FireflyCloud 测试邮件</h2>
-        <p>这是一封测试邮件，用于验证 SMTP 配置是否正确。</p>
-        <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0;">
-          <div style="font-size: 24px; font-weight: bold; color: #3b82f6;">${code}</div>
-          <div style="color: #666; margin-top: 8px;">测试验证码</div>
-        </div>
-        <p>如果您收到此邮件，说明 SMTP 配置正确。</p>
-      </div>
+      <!DOCTYPE html>
+      <html lang="zh-CN">
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>FireflyCloud SMTP 测试</title>
+      </head>
+      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: hsl(0, 0%, 3.9%); background-color: hsl(0, 0%, 96.1%); padding: 20px; margin: 0;">
+          <div style="max-width: 600px; margin: 0 auto; background-color: hsl(0, 0%, 100%); border: 1px solid hsl(0, 0%, 89.8%); border-radius: 8px; overflow: hidden;">
+              <div style="background-color: hsl(0, 0%, 9%); color: hsl(0, 0%, 98%); padding: 32px; text-align: center;">
+                  <h1 style="font-size: 24px; font-weight: 600; margin: 0;">FireflyCloud</h1>
+                  <p style="color: hsl(0, 0%, 71%); font-size: 14px; margin: 4px 0 0 0;">SMTP 测试邮件</p>
+              </div>
+              <div style="padding: 32px;">
+                  <p style="font-size: 18px; font-weight: 600; margin-bottom: 16px;">测试成功！</p>
+                  <p style="color: hsl(0, 0%, 45.1%); margin-bottom: 24px;">这是一封测试邮件，用于验证 SMTP 配置是否正确。</p>
+                  <div style="background-color: hsl(0, 0%, 96.1%); border: 1px solid hsl(0, 0%, 89.8%); border-radius: 8px; padding: 24px; text-align: center; margin: 24px 0;">
+                      <div style="font-size: 32px; font-weight: 700; color: hsl(0, 0%, 9%); letter-spacing: 6px; margin-bottom: 8px; font-family: ui-monospace, monospace;">${code}</div>
+                      <div style="color: hsl(0, 0%, 45.1%); font-size: 14px; font-weight: 500;">测试验证码</div>
+                  </div>
+                  <p style="color: hsl(0, 0%, 45.1%);">如果您收到此邮件，说明 SMTP 配置正确。</p>
+              </div>
+              <div style="background-color: hsl(0, 0%, 98%); padding: 24px 32px; text-align: center; border-top: 1px solid hsl(0, 0%, 89.8%); color: hsl(0, 0%, 45.1%); font-size: 14px;">
+                  <p style="margin: 0;">此邮件由 FireflyCloud 系统自动发送，请勿回复。</p>
+              </div>
+          </div>
+      </body>
+      </html>
     `
 
     const mailOptions = {
@@ -1071,4 +1091,73 @@ adminRoutes
       logger.error("批量重新计算存储使用量失败:", error)
       return { error: "Failed to recalculate all user storage" }
     }
+  })
+
+  // 修改管理员密码
+  .put("/change-password", async ({ body, user, set }) => {
+    try {
+      const { currentPassword, newPassword } = body
+
+      logger.info(`管理员 ${user.email} 请求修改密码`)
+
+      // 获取当前管理员信息
+      const admin = await db.select().from(users).where(eq(users.id, user.userId)).get()
+      if (!admin) {
+        set.status = 404
+        return { error: "管理员账户不存在" }
+      }
+
+      // 验证当前密码
+      const isCurrentPasswordValid = await verifyPassword(currentPassword, admin.password)
+      if (!isCurrentPasswordValid) {
+        set.status = 400
+        return { error: "当前密码不正确" }
+      }
+
+      // 验证新密码强度
+      const passwordValidation = validatePasswordStrength(newPassword)
+      if (!passwordValidation.isValid) {
+        set.status = 400
+        return {
+          error: "密码强度不足",
+          details: passwordValidation.errors
+        }
+      }
+
+      // 检查新密码是否与当前密码相同
+      const isSamePassword = await verifyPassword(newPassword, admin.password)
+      if (isSamePassword) {
+        set.status = 400
+        return { error: "新密码不能与当前密码相同" }
+      }
+
+      // 哈希新密码
+      const hashedNewPassword = await hashPassword(newPassword)
+
+      // 更新密码
+      await db
+        .update(users)
+        .set({
+          password: hashedNewPassword,
+          updatedAt: Date.now(),
+        })
+        .where(eq(users.id, user.userId))
+
+      logger.database('UPDATE', 'users')
+      logger.info(`管理员 ${user.email} 密码修改成功`)
+
+      return {
+        message: "密码修改成功",
+        passwordStrength: passwordValidation.strength
+      }
+    } catch (error) {
+      logger.error("管理员密码修改失败:", error)
+      set.status = 500
+      return { error: "密码修改失败" }
+    }
+  }, {
+    body: t.Object({
+      currentPassword: t.String({ minLength: 1 }),
+      newPassword: t.String({ minLength: 6, maxLength: 128 }),
+    }),
   })

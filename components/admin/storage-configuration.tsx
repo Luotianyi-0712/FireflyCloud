@@ -12,6 +12,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Separator } from "@/components/ui/separator"
 import { HardDrive, Cloud, Save, CheckCircle, AlertCircle, Link } from "lucide-react"
+import { toast } from "sonner"
 
 interface StorageConfig {
   storageType: "local" | "r2"
@@ -37,7 +38,6 @@ export function StorageConfiguration() {
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const { token } = useAuth()
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
@@ -92,14 +92,20 @@ export function StorageConfiguration() {
       })
 
       if (response.ok) {
-        setMessage({ type: "success", text: "存储配置更新成功" })
+        toast.success("存储配置已保存", {
+          description: "存储配置已成功更新并生效"
+        })
         fetchConfig()
       } else {
         const errorData = await response.json()
-        setMessage({ type: "error", text: errorData.error || "配置更新失败" })
+        toast.error("配置保存失败", {
+          description: errorData.error || "无法保存存储配置"
+        })
       }
     } catch (error) {
-      setMessage({ type: "error", text: "网络错误" })
+      toast.error("保存失败", {
+        description: "网络连接错误，请稍后重试"
+      })
     } finally {
       setSaving(false)
     }
@@ -119,13 +125,6 @@ export function StorageConfiguration() {
 
   return (
     <div className="space-y-6">
-      {message && (
-        <Alert variant={message.type === "error" ? "destructive" : "default"}>
-          {message.type === "success" ? <CheckCircle className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
-          <AlertDescription>{message.text}</AlertDescription>
-        </Alert>
-      )}
-
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

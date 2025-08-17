@@ -17,6 +17,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { User, Shield, Trash2, Calendar } from "lucide-react"
+import { toast } from "sonner"
 
 interface UserItem {
   id: string
@@ -76,11 +77,23 @@ export function UserManagement({ onUserDeleted }: UserManagementProps) {
       })
 
       if (response.ok) {
+        const deletedUser = users.find(user => user.id === userId)
         setUsers((prev) => prev.filter((user) => user.id !== userId))
         onUserDeleted()
+        toast.success("用户删除成功", {
+          description: `用户 "${deletedUser?.email}" 及其所有文件已被删除`
+        })
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        toast.error("删除用户失败", {
+          description: errorData.error || "无法删除用户"
+        })
       }
     } catch (error) {
       console.error("Delete failed:", error)
+      toast.error("删除失败", {
+        description: "网络连接错误，请稍后重试"
+      })
     } finally {
       setDeletingId(null)
     }

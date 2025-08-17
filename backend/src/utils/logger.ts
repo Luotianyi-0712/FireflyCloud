@@ -154,9 +154,32 @@ interface LoggerConfig {
   enableIcons: boolean
 }
 
+// 从环境变量解析日志等级
+const parseLogLevel = (levelStr?: string): LogLevel => {
+  if (!levelStr) {
+    return process.env.NODE_ENV === 'production' ? LogLevel.INFO : LogLevel.DEBUG
+  }
+
+  switch (levelStr.toUpperCase()) {
+    case 'DEBUG':
+      return LogLevel.DEBUG
+    case 'INFO':
+      return LogLevel.INFO
+    case 'WARN':
+      return LogLevel.WARN
+    case 'ERROR':
+      return LogLevel.ERROR
+    case 'FATAL':
+      return LogLevel.FATAL
+    default:
+      console.warn(`⚠️ 无效的日志等级: ${levelStr}，使用默认等级 INFO`)
+      return LogLevel.INFO
+  }
+}
+
 // 默认配置
 const defaultConfig: LoggerConfig = {
-  level: process.env.NODE_ENV === 'production' ? LogLevel.INFO : LogLevel.DEBUG,
+  level: parseLogLevel(process.env.LOG_LEVEL),
   enableColors: true,
   enableTimestamp: true,
   enableIcons: true

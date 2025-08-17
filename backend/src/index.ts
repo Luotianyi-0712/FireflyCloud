@@ -34,29 +34,24 @@ function validateEnvironmentVariables() {
     logger.error('请在 backend/.env 文件中配置以下变量:')
     logger.error('JWT_SECRET=your_jwt_secret_key')
     logger.error('DATABASE_URL=./netdisk.db')
-    logger.error('PORT=8080 (可选)')
     logger.error('')
-    logger.error('SMTP 配置现在可以在管理面板中设置，或者通过环境变量配置:')
-    logger.error('SMTP_HOST=your_smtp_host (可选)')
-    logger.error('SMTP_PORT=your_smtp_port (可选)')
-    logger.error('SMTP_USER=your_smtp_user (可选)')
-    logger.error('SMTP_PASS=your_smtp_password (可选)')
+    logger.error('可选配置:')
+    logger.error('PORT=8080 (服务端口)')
+    logger.error('LOG_LEVEL=INFO (日志等级: DEBUG, INFO, WARN, ERROR, FATAL)')
     logger.error('')
+    logger.error('注意: SMTP 配置可以在管理面板中设置，无需在环境变量中配置')
     logger.error('配置完成后请重新启动服务')
     process.exit(1)
   }
 
   logger.info('环境变量检查通过')
 
-  // 检查 SMTP 环境变量（可选）
-  const smtpEnvVars = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS']
-  const missingSmtpVars = smtpEnvVars.filter(varName => !process.env[varName])
+  // 显示当前日志等级
+  const currentLogLevel = process.env.LOG_LEVEL || 'INFO'
+  logger.info(`当前日志等级: ${currentLogLevel}`)
 
-  if (missingSmtpVars.length === 0) {
-    logger.info('SMTP 环境变量配置完整')
-  } else {
-    logger.info('SMTP 环境变量不完整，可在管理面板中配置')
-  }
+  // 提示SMTP配置方式
+  logger.info('SMTP 配置可在管理面板中设置')
 }
 
 // 启动前检查环境变量
