@@ -66,20 +66,34 @@ export function AppLayout({ children }: AppLayoutProps) {
             <Separator orientation="vertical" className="mr-2 h-4" />
             <Breadcrumb>
               <BreadcrumbList>
-                {breadcrumbs.map((item, index) => (
-                  <div key={item.href} className="flex items-center gap-2">
-                    <BreadcrumbItem className="hidden md:block">
-                      {item.isActive ? (
-                        <BreadcrumbPage>{item.label}</BreadcrumbPage>
-                      ) : (
-                        <BreadcrumbLink href={item.href}>{item.label}</BreadcrumbLink>
-                      )}
+                {/* 移动端只显示当前页面 */}
+                <div className="md:hidden">
+                  {breadcrumbs.find(item => item.isActive) && (
+                    <BreadcrumbItem>
+                      <BreadcrumbPage className="text-sm font-medium">
+                        {breadcrumbs.find(item => item.isActive)?.label}
+                      </BreadcrumbPage>
                     </BreadcrumbItem>
-                    {index < breadcrumbs.length - 1 && (
-                      <BreadcrumbSeparator className="hidden md:block" />
-                    )}
-                  </div>
-                ))}
+                  )}
+                </div>
+
+                {/* 桌面端显示完整面包屑 */}
+                <div className="hidden md:flex md:items-center md:gap-2">
+                  {breadcrumbs.map((item, index) => (
+                    <div key={item.href} className="flex items-center gap-2">
+                      <BreadcrumbItem>
+                        {item.isActive ? (
+                          <BreadcrumbPage>{item.label}</BreadcrumbPage>
+                        ) : (
+                          <BreadcrumbLink href={item.href}>{item.label}</BreadcrumbLink>
+                        )}
+                      </BreadcrumbItem>
+                      {index < breadcrumbs.length - 1 && (
+                        <BreadcrumbSeparator />
+                      )}
+                    </div>
+                  ))}
+                </div>
               </BreadcrumbList>
             </Breadcrumb>
           </div>

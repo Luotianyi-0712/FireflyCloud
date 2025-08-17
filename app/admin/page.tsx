@@ -28,9 +28,9 @@ export default function AdminPage() {
             </BreadcrumbList>
           </Breadcrumb>
 
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">管理面板</h1>
-            <p className="text-muted-foreground mt-2">管理用户、文件和系统设置</p>
+          <div className="space-y-2">
+            <h1 className="text-2xl sm:text-3xl font-bold text-foreground">管理面板</h1>
+            <p className="text-sm sm:text-base text-muted-foreground">管理用户、文件和系统设置</p>
           </div>
           <AdminDashboard />
         </div>

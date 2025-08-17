@@ -367,10 +367,10 @@ export function SmtpConfiguration() {
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="settings" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="settings">基础设置</TabsTrigger>
-              <TabsTrigger value="template">邮件模板</TabsTrigger>
-              <TabsTrigger value="test">测试发送</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 h-auto">
+              <TabsTrigger value="settings" className="text-xs sm:text-sm">基础设置</TabsTrigger>
+              <TabsTrigger value="template" className="text-xs sm:text-sm">邮件模板</TabsTrigger>
+              <TabsTrigger value="test" className="text-xs sm:text-sm">测试发送</TabsTrigger>
             </TabsList>
 
             <TabsContent value="settings" className="space-y-6">
@@ -391,7 +391,7 @@ export function SmtpConfiguration() {
 
               <Separator />
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="host">SMTP 服务器</Label>
                   <Input
@@ -417,7 +417,7 @@ export function SmtpConfiguration() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="user">用户名</Label>
                   <Input
@@ -489,7 +489,7 @@ export function SmtpConfiguration() {
                   </Button>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>模板编辑器</Label>
                     <Textarea

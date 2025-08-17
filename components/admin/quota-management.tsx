@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useAuth } from "@/components/auth/auth-provider"
+import { useIsMobile } from "@/hooks/use-mobile"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -82,6 +83,7 @@ export function QuotaManagement() {
   const [defaultQuota, setDefaultQuota] = useState("")
   const [description, setDescription] = useState("")
   const { token } = useAuth()
+  const isMobile = useIsMobile()
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
 
@@ -344,7 +346,7 @@ export function QuotaManagement() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
             {["admin", "user"].map((role) => {
               const config = roleConfigs.find(c => c.role === role)
               return (
@@ -388,24 +390,25 @@ export function QuotaManagement() {
       {/* 用户配额管理 */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <HardDrive className="h-5 w-5" />
-                用户存储配额管理
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+                <HardDrive className="h-5 w-5 flex-shrink-0" />
+                <span className="truncate">用户存储配额管理</span>
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-sm">
                 管理所有用户的存储配额和使用情况
               </CardDescription>
             </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={fetchQuotas}>
-                <RefreshCw className="h-4 w-4 mr-2" />
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button variant="outline" onClick={fetchQuotas} size="sm" className="text-xs sm:text-sm">
+                <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                 刷新
               </Button>
-              <Button variant="outline" onClick={handleRecalculateAllStorage}>
-                <Calculator className="h-4 w-4 mr-2" />
-                重新计算全部
+              <Button variant="outline" onClick={handleRecalculateAllStorage} size="sm" className="text-xs sm:text-sm">
+                <Calculator className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">重新计算全部</span>
+                <span className="sm:hidden">重新计算</span>
               </Button>
             </div>
           </div>
@@ -416,7 +419,87 @@ export function QuotaManagement() {
               <HardDrive className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p>暂无用户配额记录</p>
             </div>
+          ) : isMobile ? (
+            /* 移动端卡片布局 */
+            <div className="space-y-3">
+              {quotas.map((quota) => {
+                const usagePercentage = getUsagePercentage(quota.usedStorage, quota.maxStorage)
+                const effectiveQuota = quota.customQuota || quota.maxStorage
+
+                return (
+                  <Card key={quota.id} className="border">
+                    <CardContent className="p-4">
+                      <div className="space-y-3">
+                        {/* 用户信息和角色 */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <Users className="h-4 w-4 flex-shrink-0" />
+                            <span className="font-medium truncate text-sm">{quota.userEmail}</span>
+                          </div>
+                          <Badge variant={quota.role === "admin" ? "default" : "secondary"} className="text-xs">
+                            {quota.role === "admin" ? "管理员" : "用户"}
+                          </Badge>
+                        </div>
+
+                        {/* 配额信息 */}
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          <div>
+                            <div className="text-muted-foreground text-xs">配额</div>
+                            <div className="font-medium">{formatFileSize(effectiveQuota)}</div>
+                            {quota.customQuota && (
+                              <div className="text-xs text-muted-foreground">自定义配额</div>
+                            )}
+                          </div>
+                          <div>
+                            <div className="text-muted-foreground text-xs">已使用</div>
+                            <div className="font-medium">{formatFileSize(quota.usedStorage)}</div>
+                            <div className="text-xs text-muted-foreground">
+                              剩余 {formatFileSize(effectiveQuota - quota.usedStorage)}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 使用率进度条 */}
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">使用率</span>
+                            <span className="font-medium">{usagePercentage}%</span>
+                          </div>
+                          <Progress value={usagePercentage} className="h-2" />
+                        </div>
+
+                        {/* 更新时间和操作按钮 */}
+                        <div className="flex items-center justify-between pt-2 border-t">
+                          <div className="text-xs text-muted-foreground">
+                            更新于 {formatDate(quota.updatedAt)}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEditQuota(quota)}
+                              className="h-8 w-8 p-0"
+                            >
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleRecalculateStorage(quota.userId)}
+                              className="h-8 w-8 p-0"
+                            >
+                              <Calculator className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
           ) : (
+            /* 桌面端表格布局 */
             <div className="rounded-md border">
               <Table>
                 <TableHeader>
@@ -434,7 +517,7 @@ export function QuotaManagement() {
                   {quotas.map((quota) => {
                     const usagePercentage = getUsagePercentage(quota.usedStorage, quota.maxStorage)
                     const effectiveQuota = quota.customQuota || quota.maxStorage
-                    
+
                     return (
                       <TableRow key={quota.id}>
                         <TableCell>

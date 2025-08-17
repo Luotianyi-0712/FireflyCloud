@@ -129,31 +129,31 @@ export function UserManagement({ onUserDeleted }: UserManagementProps) {
     <div className="space-y-3">
       {users.map((user) => (
         <Card key={user.id}>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4 flex-1">
-                <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10">
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+              <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+                <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10 flex-shrink-0">
                   {user.role === "admin" ? (
                     <Shield className="h-5 w-5 text-primary" />
                   ) : (
                     <User className="h-5 w-5 text-muted-foreground" />
                   )}
                 </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h4 className="font-medium">{user.email}</h4>
-                    <Badge variant={user.role === "admin" ? "default" : "secondary"} className="text-xs">
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 mb-1">
+                    <h4 className="font-medium truncate text-sm sm:text-base">{user.email}</h4>
+                    <Badge variant={user.role === "admin" ? "default" : "secondary"} className="text-xs self-start sm:self-auto">
                       {user.role.toUpperCase()}
                     </Badge>
                   </div>
-                  <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                    <Calendar className="h-3 w-3" />
-                    加入于 {formatDate(user.createdAt)}
+                  <div className="flex items-center gap-1 text-xs sm:text-sm text-muted-foreground">
+                    <Calendar className="h-3 w-3 flex-shrink-0" />
+                    <span className="truncate">加入于 {formatDate(user.createdAt)}</span>
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 self-end sm:self-auto">
                 {user.id !== "admin" && (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>

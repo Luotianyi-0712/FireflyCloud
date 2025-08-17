@@ -42,13 +42,13 @@ export default function DatabasePage() {
         </Breadcrumb>
 
         {/* 页面标题 */}
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-primary/10">
-            <Database className="h-6 w-6 text-primary" />
+        <div className="flex items-center space-x-3 sm:space-x-4">
+          <div className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-primary/10 flex-shrink-0">
+            <Database className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
           </div>
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">数据库管理</h1>
-            <p className="text-muted-foreground">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight">数据库管理</h1>
+            <p className="text-sm sm:text-base text-muted-foreground">
               查看和管理数据库中的所有表和数据
             </p>
           </div>

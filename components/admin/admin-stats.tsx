@@ -77,7 +77,7 @@ export function AdminStats({ stats, onRefresh }: AdminStatsProps) {
   return (
     <div className="space-y-6">
       {/* 主要统计卡片 */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium">总用户数</CardTitle>
@@ -85,14 +85,18 @@ export function AdminStats({ stats, onRefresh }: AdminStatsProps) {
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">{stats.totalUsers}</div>
-          <div className="flex items-center gap-2 mt-2">
-            <Badge variant="outline" className="text-xs">
-              <Shield className="h-3 w-3 mr-1" />
-              {stats.adminUsers} 管理员
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-2">
+            <Badge variant="outline" className="text-xs flex items-center gap-1">
+              <Shield className="h-3 w-3" />
+              <span className="hidden xs:inline">管理员</span>
+              <span className="xs:hidden">管</span>
+              {stats.adminUsers}
             </Badge>
-            <Badge variant="outline" className="text-xs">
-              <User className="h-3 w-3 mr-1" />
-              {stats.regularUsers} 用户
+            <Badge variant="outline" className="text-xs flex items-center gap-1">
+              <User className="h-3 w-3" />
+              <span className="hidden xs:inline">用户</span>
+              <span className="xs:hidden">用</span>
+              {stats.regularUsers}
             </Badge>
           </div>
         </CardContent>
@@ -134,12 +138,12 @@ export function AdminStats({ stats, onRefresh }: AdminStatsProps) {
           <div className="text-2xl font-bold">
             {formatFileSize(stats.r2Storage || 0)}
           </div>
-          <div className="flex flex-wrap items-center gap-2 mt-2">
-            <Badge variant="outline" className="text-xs">
-              <Files className="h-3 w-3 mr-1" />
-              {stats.r2Files || 0} 文件
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-2">
+            <Badge variant="outline" className="text-xs flex items-center gap-1">
+              <Files className="h-3 w-3" />
+              <span>{stats.r2Files || 0}</span>
+              <span className="hidden xs:inline">文件</span>
             </Badge>
-
           </div>
           {stats.r2StorageError && (
             <div className="text-xs text-amber-600 mt-1 flex items-center gap-1">

@@ -133,24 +133,24 @@ export function FileManagement({ onFileDeleted }: FileManagementProps) {
     <div className="space-y-3">
       {files.map((file) => (
         <Card key={file.id}>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4 flex-1 min-w-0">
-                <div>{getFileIcon(file.mimeType, file.originalName)}</div>
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+              <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+                <div className="flex-shrink-0">{getFileIcon(file.mimeType, file.originalName)}</div>
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-medium truncate">{file.originalName}</h4>
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
-                    <span>{formatFileSize(file.size)}</span>
+                  <h4 className="font-medium truncate text-sm sm:text-base">{file.originalName}</h4>
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm text-muted-foreground mt-1">
+                    <span className="font-medium">{formatFileSize(file.size)}</span>
                     <div className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      {formatDate(file.createdAt)}
+                      <Calendar className="h-3 w-3 flex-shrink-0" />
+                      <span className="truncate">{formatDate(file.createdAt)}</span>
                     </div>
                     <div className="flex items-center gap-1">
-                      <User className="h-3 w-3" />
-                      {file.userId}
+                      <User className="h-3 w-3 flex-shrink-0" />
+                      <span className="truncate max-w-[100px] sm:max-w-none">{file.userId}</span>
                     </div>
                     <div className="flex items-center gap-1">
-                      <HardDrive className="h-3 w-3" />
+                      <HardDrive className="h-3 w-3 flex-shrink-0" />
                       <Badge variant="outline" className="text-xs">
                         {file.storageType.toUpperCase()}
                       </Badge>
@@ -159,7 +159,7 @@ export function FileManagement({ onFileDeleted }: FileManagementProps) {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 self-end sm:self-auto">
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700 bg-transparent">

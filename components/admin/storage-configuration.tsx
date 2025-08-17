@@ -210,7 +210,7 @@ export function StorageConfiguration() {
                   <span className="font-medium text-base">Cloudflare R2 配置</span>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="r2Endpoint">R2 端点</Label>
                     <Input
