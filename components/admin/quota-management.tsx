@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useAuth } from "@/components/auth/auth-provider"
-import { useIsMobile } from "@/hooks/use-mobile"
+import { useIsMobile } from "@/components/ui/use-mobile"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"

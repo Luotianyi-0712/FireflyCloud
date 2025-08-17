@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Users, Files, Settings, Mail, Cloud, HardDrive, Key, ChevronDown } from "lucide-react"
-import { useIsMobile } from "@/hooks/use-mobile"
+import { useIsMobile } from "@/components/ui/use-mobile"
 import { AdminStats } from "./admin-stats"
 import { UserManagement } from "./user-management"
 import { FileManagement } from "./file-management"

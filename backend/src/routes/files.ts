@@ -359,7 +359,15 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
             name: file.originalName,
             type: file.mimeType,
             size: contentBuffer.length,
-            arrayBuffer: async () => contentBuffer.buffer.slice(contentBuffer.byteOffset, contentBuffer.byteOffset + contentBuffer.byteLength)
+            lastModified: Date.now(),
+            arrayBuffer: async () => contentBuffer.buffer.slice(contentBuffer.byteOffset, contentBuffer.byteOffset + contentBuffer.byteLength),
+            stream: () => new ReadableStream({
+              start(controller) {
+                controller.enqueue(contentBuffer)
+                controller.close()
+              }
+            }),
+            text: async () => content
           } as File
 
           await storageService.uploadFile(fileObject, file.storagePath)

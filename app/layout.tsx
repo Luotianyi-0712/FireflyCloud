@@ -4,6 +4,7 @@ import { GeistSans } from "geist/font/sans"
 import { GeistMono } from "geist/font/mono"
 import "./globals.css"
 import { Providers } from "@/components/providers"
+import "@/lib/polyfills"
 
 export const metadata: Metadata = {
   title: "FireflyCloud - 云存储",
