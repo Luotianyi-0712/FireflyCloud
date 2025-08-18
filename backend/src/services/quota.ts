@@ -100,11 +100,8 @@ export class QuotaService {
 
       const allowed = availableSpace >= additionalSize
 
-      logger.info(`用户 ${userId} 配额检查: 本地 ${this.formatFileSize(localStorage)} (${localCount}文件), R2实际 ${this.formatFileSize(r2Storage)} (${r2Count}文件), 总计 ${this.formatFileSize(currentUsed)}, 最大容量 ${this.formatFileSize(maxStorage)}, 可用空间 ${this.formatFileSize(availableSpace)}, 需要 ${this.formatFileSize(additionalSize)}, 允许: ${allowed}`)
-
       // 如果实际使用量与数据库记录不一致，更新数据库记录
       if (currentUsed !== quota.usedStorage) {
-        logger.info(`用户 ${userId} 配额数据不一致，更新: ${quota.usedStorage} -> ${currentUsed}`)
         await db
           .update(userQuotas)
           .set({
@@ -395,8 +392,6 @@ export class QuotaService {
       const actualUsedStorage = localStorage + r2Storage
       const maxStorage = quota.customQuota || quota.maxStorage
       const availableSpace = maxStorage - actualUsedStorage
-
-      logger.info(`用户 ${userId} 存储统计: 本地 ${this.formatFileSize(localStorage)} (${localCount}文件), R2实际 ${this.formatFileSize(r2Storage)} (${r2Count}文件), 总计 ${this.formatFileSize(actualUsedStorage)}`)
 
       // 如果实际使用量与数据库记录不一致，更新数据库记录
       if (actualUsedStorage !== quota.usedStorage) {

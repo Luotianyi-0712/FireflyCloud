@@ -91,7 +91,6 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
       }
 
       logger.file('DOWNLOAD', file.originalName, file.size, true)
-      logger.info(`文件下载成功: ${file.originalName} - 用户: ${tokenRecord.userId} - 令牌: ${tokenRecord.id} - 使用次数: ${newUsageCount}/${maxUsage}`)
 
       const storageService = new StorageService(config)
       

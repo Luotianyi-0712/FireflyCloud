@@ -65,7 +65,6 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
           } else {
             r2ActualStorage = r2Stats.totalSize
             r2ActualFiles = r2Stats.totalFiles
-            logger.info(`R2实际使用量: ${r2ActualFiles} 个文件，${r2ActualStorage} 字节`)
           }
         } catch (error) {
           r2StorageError = error instanceof Error ? error.message : "Unknown error"
@@ -75,8 +74,6 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
 
       // 计算总存储（本地存储 + R2实际存储）
       const actualTotalStorage = localStorage + r2ActualStorage
-
-      logger.info(`统计信息汇总: 用户${totalUsers.length}, 数据库文件${totalFiles.length}, 本地存储${localStorage}, R2实际存储${r2ActualStorage}, 总存储${actualTotalStorage}`)
 
       return {
         totalUsers: totalUsers.length,
@@ -733,7 +730,6 @@ adminRoutes
         .where(eq(folders.userId, userId))
         .orderBy(folders.path)
 
-      logger.info(`用户 ${userId} 有 ${userFolders.length} 个文件夹`)
       return { folders: userFolders }
     } catch (error) {
       logger.error("管理员获取用户文件夹失败:", error)
@@ -749,8 +745,6 @@ adminRoutes
   // 刷新R2存储统计缓存
   .post("/refresh-r2-stats", async ({ set }) => {
     try {
-      logger.info("管理员请求刷新R2存储统计")
-
       // 获取存储配置
       const config = await db.select().from(storageConfig).get()
 
@@ -812,7 +806,6 @@ adminRoutes
         .leftJoin(users, eq(userQuotas.userId, users.id))
         .orderBy(desc(userQuotas.updatedAt))
 
-      logger.info(`管理员查询到 ${quotas.length} 个用户配额记录`)
       return { quotas }
     } catch (error) {
       logger.error("管理员获取用户配额失败:", error)
@@ -959,7 +952,6 @@ adminRoutes
       }
 
       logger.database(existingQuota ? 'UPDATE' : 'INSERT', 'user_quotas')
-      logger.info(`用户 ${userId} 的配额更新成功`)
 
       return { message: "User quota updated successfully" }
     } catch (error) {
@@ -982,8 +974,6 @@ adminRoutes
     try {
       const { userId } = params
 
-      logger.info(`管理员重新计算用户 ${userId} 的存储使用量`)
-
       // 检查用户是否存在
       const user = await db.select().from(users).where(eq(users.id, userId)).get()
       if (!user) {
@@ -998,8 +988,6 @@ adminRoutes
         set.status = 404
         return { error: result.error || "User quota record not found" }
       }
-
-      logger.info(`用户 ${userId} 存储使用量重新计算完成: ${result.oldUsed} -> ${result.newUsed} 字节`)
 
       return {
         message: "User storage recalculated successfully",
@@ -1026,8 +1014,6 @@ adminRoutes
   // 批量重新计算所有用户存储使用量
   .post("/recalculate-all-storage", async () => {
     try {
-      logger.info("管理员批量重新计算所有用户存储使用量")
-
       const allUsers = await db.select().from(users).all()
       let updatedCount = 0
 
@@ -1079,7 +1065,6 @@ adminRoutes
       }
 
       logger.database('UPDATE', 'user_quotas')
-      logger.info(`批量重新计算完成，更新了 ${updatedCount} 个用户的存储使用量`)
 
       return {
         message: "All user storage recalculated successfully",

@@ -106,7 +106,6 @@ export class IPBanService {
           .returning()
           .get()
 
-        logger.info(`更新现有IP封禁记录: ${ipAddress}`)
         return updatedBan as IPBanInfo
       }
 
@@ -129,7 +128,6 @@ export class IPBanService {
         .returning()
         .get()
 
-      logger.info(`创建IP封禁记录成功: ${ipAddress}`)
       return newBan as IPBanInfo
     } catch (error) {
       logger.error('封禁IP失败:', error)

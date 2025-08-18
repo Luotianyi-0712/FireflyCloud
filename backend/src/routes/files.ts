@@ -52,7 +52,6 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
       .select()
       .from(files)
       .where(and(...whereConditions))
-    logger.info(`用户 ${user.userId} 获取了 ${userFiles.length} 个文件`)
     return { files: userFiles }
   })
   .post(
@@ -134,7 +133,6 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
         })
 
         logger.database('INSERT', 'files')
-        logger.info(`文件上传成功: ${file.name} - ID: ${fileId}`)
 
         return {
           message: "File uploaded successfully",
@@ -687,8 +685,6 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
         .innerJoin(files, eq(fileShares.fileId, files.id))
         .where(eq(fileShares.userId, user.userId))
         .orderBy(fileShares.createdAt)
-
-      logger.info(`用户 ${user.userId} 获取了 ${userShares.length} 个分享记录`)
 
       return { shares: userShares }
     } catch (error) {

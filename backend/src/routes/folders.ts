@@ -41,7 +41,6 @@ export const folderRoutes = new Elysia({ prefix: "/folders" })
       .where(eq(folders.userId, user.userId))
       .orderBy(folders.path)
     
-    logger.info(`用户 ${user.userId} 获取了 ${userFolders.length} 个文件夹`)
     return { folders: userFolders }
   })
   // 获取指定文件夹的内容（子文件夹和文件）
@@ -73,8 +72,6 @@ export const folderRoutes = new Elysia({ prefix: "/folders" })
         )
       )
       .orderBy(files.originalName)
-    
-    logger.info(`文件夹 ${folderId || "root"} 包含 ${subFolders.length} 个子文件夹和 ${folderFiles.length} 个文件`)
     
     return {
       folders: subFolders,
@@ -165,8 +162,7 @@ export const folderRoutes = new Elysia({ prefix: "/folders" })
         })
         
         logger.database('INSERT', 'folders')
-        logger.info(`文件夹创建成功: ${name} - ID: ${folderId}`)
-        
+
         return {
           message: "Folder created successfully",
           folder: {

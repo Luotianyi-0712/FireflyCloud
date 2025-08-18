@@ -1,5 +1,5 @@
 /**
- * 日志系统 - 支持分级日志、颜色显示、时间戳等功能
+ * 简化的日志系统 - 专注于HTTP请求日志
  */
 
 // ANSI 颜色代码
@@ -7,9 +7,8 @@ const colors = {
   reset: '\x1b[0m',
   bright: '\x1b[1m',
   dim: '\x1b[2m',
-  
+
   // 前景色
-  black: '\x1b[30m',
   red: '\x1b[31m',
   green: '\x1b[32m',
   yellow: '\x1b[33m',
@@ -17,15 +16,7 @@ const colors = {
   magenta: '\x1b[35m',
   cyan: '\x1b[36m',
   white: '\x1b[37m',
-  
-  // 背景色
-  bgRed: '\x1b[41m',
-  bgGreen: '\x1b[42m',
-  bgYellow: '\x1b[43m',
-  bgBlue: '\x1b[44m',
-  bgMagenta: '\x1b[45m',
-  bgCyan: '\x1b[46m',
-  
+
   // 亮色
   brightRed: '\x1b[91m',
   brightGreen: '\x1b[92m',
@@ -33,7 +24,16 @@ const colors = {
   brightBlue: '\x1b[94m',
   brightMagenta: '\x1b[95m',
   brightCyan: '\x1b[96m',
-  brightWhite: '\x1b[97m'
+  brightWhite: '\x1b[97m',
+
+  // 背景色
+  bgRed: '\x1b[41m',
+  bgGreen: '\x1b[42m',
+  bgYellow: '\x1b[43m',
+  bgBlue: '\x1b[44m',
+  bgMagenta: '\x1b[45m',
+  bgCyan: '\x1b[46m',
+  bgWhite: '\x1b[47m'
 }
 
 // 日志级别枚举
@@ -74,16 +74,16 @@ const logLevelConfig = {
   }
 }
 
-// HTTP 状态码颜色配置
+// HTTP 状态码颜色配置 - 使用背景色块 + 白色文字
 const getStatusCodeColor = (statusCode: number): string => {
   if (statusCode >= 200 && statusCode < 300) {
-    return colors.brightGreen // 2xx - 成功
+    return colors.bgGreen + colors.white // 2xx - 成功：绿色背景 + 白色文字
   } else if (statusCode >= 300 && statusCode < 400) {
-    return colors.brightCyan // 3xx - 重定向
+    return colors.bgCyan + colors.white // 3xx - 重定向：青色背景 + 白色文字
   } else if (statusCode >= 400 && statusCode < 500) {
-    return colors.brightYellow // 4xx - 客户端错误
+    return colors.bgYellow + colors.white // 4xx - 客户端错误：黄色背景 + 白色文字
   } else if (statusCode >= 500) {
-    return colors.brightRed // 5xx - 服务器错误
+    return colors.bgRed + colors.white // 5xx - 服务器错误：红色背景 + 白色文字
   }
   return colors.white // 其他
 }
@@ -230,7 +230,11 @@ class Logger {
   }
 
   info(message: string, ...args: any[]): void {
-    this.log(LogLevel.INFO, message, ...args)
+    // INFO级别不再显示传统的业务日志，只显示HTTP请求日志
+    // 如果需要显示业务日志，请使用DEBUG级别
+    if (this.config.level <= LogLevel.DEBUG) {
+      this.log(LogLevel.INFO, message, ...args)
+    }
   }
 
   warn(message: string, ...args: any[]): void {
@@ -245,9 +249,64 @@ class Logger {
     this.log(LogLevel.FATAL, message, ...args)
   }
 
-  // HTTP 请求日志
-  http(method: string, path: string, statusCode: number, duration: number, userAgent?: string): void {
-    if (LogLevel.INFO < this.config.level) {
+  // 启动日志 - 总是显示，不受日志级别限制
+  startup(message: string, ...args: any[]): void {
+    this.log(LogLevel.INFO, message, ...args)
+  }
+
+  // 数据库日志 - 只在DEBUG级别显示
+  dbInfo(message: string, ...args: any[]): void {
+    if (this.config.level <= LogLevel.DEBUG) {
+      this.log(LogLevel.INFO, message, ...args)
+    }
+  }
+
+  // HTTP 请求日志 - 与启动日志格式一致
+  http(method: string, path: string, statusCode: number, duration: number, userAgent?: string, clientIp?: string): void {
+    // HTTP日志在INFO级别及以下都显示
+    if (this.config.level > LogLevel.INFO) {
+      return
+    }
+
+    // 使用与其他日志相同的时间戳格式
+    const timestamp = this.config.enableTimestamp ? formatTimestamp() : ''
+    const ip = clientIp || 'unknown'
+    const formattedDuration = formatDuration(duration)
+
+    // 获取INFO级别的配置
+    const levelConfig = logLevelConfig[LogLevel.INFO]
+    const levelName = levelConfig.name.padEnd(5)
+
+    if (this.config.enableColors) {
+      // 使用与原有log方法相同的颜色格式，但去除ℹ️符号
+      const timestampStr = timestamp ? `${colors.dim}[${timestamp}]${colors.reset} ` : ''
+      const levelStr = `${levelConfig.color}${levelName}${colors.reset}`
+
+      // 格式化各个部分，确保对齐和美观
+      const statusStr = `${getStatusCodeColor(statusCode)} ${statusCode} ${colors.reset}`
+      const methodStr = `${getMethodColor(method)}${method.padEnd(7)}${colors.reset}` // 方法名对齐
+      const pathStr = `${colors.brightWhite}${path}${colors.reset}`
+      const durationStr = `${getDurationColor(duration)}${formattedDuration.padStart(8)}${colors.reset}` // 时间右对齐
+      const ipStr = `${colors.dim}${ip}${colors.reset}`
+
+      // 使用更清晰的分隔符和间距
+      const httpContent = `${statusStr} ${methodStr} ${pathStr} ${durationStr} ${ipStr}`
+      const httpLogFormat = `${timestampStr}${levelStr} ${httpContent}`
+      console.log(httpLogFormat)
+    } else {
+      const timestampStr = timestamp ? `[${timestamp}] ` : ''
+      const statusPadded = statusCode.toString().padStart(3)
+      const methodPadded = method.padEnd(7)
+      const durationPadded = formattedDuration.padStart(8)
+      const httpContent = `${statusPadded} ${methodPadded} ${path} ${durationPadded} ${ip}`
+      const simpleFormat = `${timestampStr}${levelName} ${httpContent}`
+      console.log(simpleFormat)
+    }
+  }
+
+  // 详细HTTP请求日志（用于调试）
+  httpDetailed(method: string, path: string, statusCode: number, duration: number, userAgent?: string, clientIp?: string): void {
+    if (this.config.level > LogLevel.DEBUG) {
       return
     }
 
@@ -260,22 +319,33 @@ class Logger {
       const statusStr = `${getStatusCodeColor(statusCode)}${statusCode}${colors.reset}`
       const durationStr = `${getDurationColor(duration)}${formattedDuration}${colors.reset}`
       const pathStr = `${colors.brightWhite}${path}${colors.reset}`
-      
+
       let logMessage = `${timestampStr}${colors.brightCyan}HTTP${colors.reset}  🌐 ${methodStr} ${pathStr} ${statusStr} ${durationStr}`
-      
-      if (userAgent) {
-        logMessage += ` ${colors.dim}${userAgent}${colors.reset}`
+
+      if (clientIp) {
+        logMessage += ` ${colors.dim}from ${clientIp}${colors.reset}`
       }
-      
+
+      if (userAgent && process.env.NODE_ENV !== 'production') {
+        // 只在开发环境显示User-Agent，避免日志过长
+        const shortUA = userAgent.length > 50 ? userAgent.substring(0, 50) + '...' : userAgent
+        logMessage += ` ${colors.dim}${shortUA}${colors.reset}`
+      }
+
       console.log(logMessage)
     } else {
       const timestampStr = timestamp ? `[${timestamp}] ` : ''
       let logMessage = `${timestampStr}HTTP   🌐 ${method.padEnd(6)} ${path} ${statusCode} ${formattedDuration}`
-      
-      if (userAgent) {
-        logMessage += ` ${userAgent}`
+
+      if (clientIp) {
+        logMessage += ` from ${clientIp}`
       }
-      
+
+      if (userAgent && process.env.NODE_ENV !== 'production') {
+        const shortUA = userAgent.length > 50 ? userAgent.substring(0, 50) + '...' : userAgent
+        logMessage += ` ${shortUA}`
+      }
+
       console.log(logMessage)
     }
   }

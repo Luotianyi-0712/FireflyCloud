@@ -10,7 +10,7 @@ export const db = drizzle(sqlite, { schema })
 // Initialize database with auto-migration
 async function initializeDatabase() {
   try {
-    logger.info('🔧 开始初始化数据库...')
+    logger.startup('🔧 开始初始化数据库...')
 
     // 创建基础表
     sqlite.exec(`
@@ -225,10 +225,10 @@ async function initializeDatabase() {
     const hasEmailVerified = userColumns.some(col => col.name === 'email_verified')
 
     if (!hasEmailVerified) {
-      logger.info('添加 email_verified 字段到 users 表...')
+      logger.dbInfo('添加 email_verified 字段到 users 表...')
       sqlite.exec('ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0')
       logger.database('ALTER', 'users')
-      logger.info('email_verified 字段添加成功')
+      logger.dbInfo('email_verified 字段添加成功')
     }
 
     // 检查并添加 folder_id 字段到 files 表
@@ -236,10 +236,10 @@ async function initializeDatabase() {
     const hasFolderId = fileColumns.some(col => col.name === 'folder_id')
 
     if (!hasFolderId) {
-      logger.info('添加 folder_id 字段到 files 表...')
+      logger.dbInfo('添加 folder_id 字段到 files 表...')
       sqlite.exec('ALTER TABLE files ADD COLUMN folder_id TEXT')
       logger.database('ALTER', 'files')
-      logger.info('folder_id 字段添加成功')
+      logger.dbInfo('folder_id 字段添加成功')
     }
 
     // 检查并添加 enable_mixed_mode 字段到 storage_config 表
@@ -247,10 +247,10 @@ async function initializeDatabase() {
     const hasEnableMixedMode = storageConfigColumns.some(col => col.name === 'enable_mixed_mode')
 
     if (!hasEnableMixedMode) {
-      logger.info('添加 enable_mixed_mode 字段到 storage_config 表...')
+      logger.dbInfo('添加 enable_mixed_mode 字段到 storage_config 表...')
       sqlite.exec('ALTER TABLE storage_config ADD COLUMN enable_mixed_mode INTEGER NOT NULL DEFAULT 0')
       logger.database('ALTER', 'storage_config')
-      logger.info('enable_mixed_mode 字段添加成功')
+      logger.dbInfo('enable_mixed_mode 字段添加成功')
     }
 
     // 检查并添加 OneDrive 相关字段到 storage_config 表
@@ -259,24 +259,24 @@ async function initializeDatabase() {
     const hasOneDriveTenantId = storageConfigColumns.some(col => col.name === 'onedrive_tenant_id')
 
     if (!hasOneDriveClientId) {
-      logger.info('添加 onedrive_client_id 字段到 storage_config 表...')
+      logger.dbInfo('添加 onedrive_client_id 字段到 storage_config 表...')
       sqlite.exec('ALTER TABLE storage_config ADD COLUMN onedrive_client_id TEXT')
       logger.database('ALTER', 'storage_config')
-      logger.info('onedrive_client_id 字段添加成功')
+      logger.dbInfo('onedrive_client_id 字段添加成功')
     }
 
     if (!hasOneDriveClientSecret) {
-      logger.info('添加 onedrive_client_secret 字段到 storage_config 表...')
+      logger.dbInfo('添加 onedrive_client_secret 字段到 storage_config 表...')
       sqlite.exec('ALTER TABLE storage_config ADD COLUMN onedrive_client_secret TEXT')
       logger.database('ALTER', 'storage_config')
-      logger.info('onedrive_client_secret 字段添加成功')
+      logger.dbInfo('onedrive_client_secret 字段添加成功')
     }
 
     if (!hasOneDriveTenantId) {
-      logger.info('添加 onedrive_tenant_id 字段到 storage_config 表...')
+      logger.dbInfo('添加 onedrive_tenant_id 字段到 storage_config 表...')
       sqlite.exec('ALTER TABLE storage_config ADD COLUMN onedrive_tenant_id TEXT')
       logger.database('ALTER', 'storage_config')
-      logger.info('onedrive_tenant_id 字段添加成功')
+      logger.dbInfo('onedrive_tenant_id 字段添加成功')
     }
 
     // 检查并修复 email_verification_codes 表的 used 字段约束
@@ -290,7 +290,7 @@ async function initializeDatabase() {
       const usedColumn = emailVerificationColumns.find(col => col.name === 'used')
 
       if (usedColumn && usedColumn.notnull === 0) {
-        logger.info('修复 email_verification_codes 表的 used 字段约束...')
+        logger.dbInfo('修复 email_verification_codes 表的 used 字段约束...')
         // 由于 SQLite 不支持直接修改列约束，我们需要重建表
         sqlite.exec(`
           CREATE TABLE email_verification_codes_new (
@@ -310,7 +310,7 @@ async function initializeDatabase() {
           ALTER TABLE email_verification_codes_new RENAME TO email_verification_codes;
         `)
         logger.database('REBUILD', 'email_verification_codes')
-        logger.info('email_verification_codes 表结构修复完成')
+        logger.dbInfo('email_verification_codes 表结构修复完成')
       }
     }
 
@@ -326,22 +326,22 @@ async function initializeDatabase() {
       const hasMaxUsage = downloadTokenColumns.some(col => col.name === 'max_usage')
 
       if (!hasUsageCount) {
-        logger.info('添加 usage_count 字段到 download_tokens 表...')
+        logger.dbInfo('添加 usage_count 字段到 download_tokens 表...')
         sqlite.exec('ALTER TABLE download_tokens ADD COLUMN usage_count INTEGER NOT NULL DEFAULT 0')
         logger.database('ALTER', 'download_tokens')
-        logger.info('usage_count 字段添加成功')
+        logger.dbInfo('usage_count 字段添加成功')
       }
 
       if (!hasMaxUsage) {
-        logger.info('添加 max_usage 字段到 download_tokens 表...')
+        logger.dbInfo('添加 max_usage 字段到 download_tokens 表...')
         sqlite.exec('ALTER TABLE download_tokens ADD COLUMN max_usage INTEGER NOT NULL DEFAULT 2')
         logger.database('ALTER', 'download_tokens')
-        logger.info('max_usage 字段添加成功')
+        logger.dbInfo('max_usage 字段添加成功')
       }
 
       // 迁移现有数据：将 used=1 的记录设置为已达到最大使用次数
       if (!hasUsageCount || !hasMaxUsage) {
-        logger.info('迁移现有下载令牌数据...')
+        logger.dbInfo('迁移现有下载令牌数据...')
         const updateResult = sqlite.exec(`
           UPDATE download_tokens
           SET usage_count = CASE
@@ -350,7 +350,7 @@ async function initializeDatabase() {
           END
           WHERE usage_count = 0 OR usage_count IS NULL
         `)
-        logger.info('下载令牌数据迁移完成')
+        logger.dbInfo('下载令牌数据迁移完成')
       }
     }
 
@@ -371,62 +371,62 @@ async function initializeDatabase() {
       const hasCustomFileSize = fileSharesColumns.some((col: any) => col.name === 'custom_file_size')
 
       if (!hasGatekeeper) {
-        logger.info('添加 gatekeeper 字段到 file_shares 表...')
+        logger.dbInfo('添加 gatekeeper 字段到 file_shares 表...')
         sqlite.exec('ALTER TABLE file_shares ADD COLUMN gatekeeper INTEGER NOT NULL DEFAULT 0')
         logger.database('ALTER', 'file_shares')
-        logger.info('gatekeeper 字段添加成功')
+        logger.dbInfo('gatekeeper 字段添加成功')
       }
 
       if (!hasEnabled) {
-        logger.info('添加 enabled 字段到 file_shares 表...')
+        logger.dbInfo('添加 enabled 字段到 file_shares 表...')
         sqlite.exec('ALTER TABLE file_shares ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1')
         logger.database('ALTER', 'file_shares')
-        logger.info('enabled 字段添加成功')
+        logger.dbInfo('enabled 字段添加成功')
       }
 
       if (!hasAccessCount) {
-        logger.info('添加 access_count 字段到 file_shares 表...')
+        logger.dbInfo('添加 access_count 字段到 file_shares 表...')
         sqlite.exec('ALTER TABLE file_shares ADD COLUMN access_count INTEGER NOT NULL DEFAULT 0')
         logger.database('ALTER', 'file_shares')
-        logger.info('access_count 字段添加成功')
+        logger.dbInfo('access_count 字段添加成功')
       }
 
       if (!hasUpdatedAt) {
-        logger.info('添加 updated_at 字段到 file_shares 表...')
+        logger.dbInfo('添加 updated_at 字段到 file_shares 表...')
         sqlite.exec('ALTER TABLE file_shares ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0')
         logger.database('ALTER', 'file_shares')
-        logger.info('updated_at 字段添加成功')
+        logger.dbInfo('updated_at 字段添加成功')
 
         // 更新现有记录的 updated_at 字段
         sqlite.exec(`UPDATE file_shares SET updated_at = created_at WHERE updated_at = 0`)
-        logger.info('已更新现有记录的 updated_at 字段')
+        logger.dbInfo('已更新现有记录的 updated_at 字段')
       }
 
       if (!hasCustomFileName) {
-        logger.info('添加 custom_file_name 字段到 file_shares 表...')
+        logger.dbInfo('添加 custom_file_name 字段到 file_shares 表...')
         sqlite.exec('ALTER TABLE file_shares ADD COLUMN custom_file_name TEXT')
         logger.database('ALTER', 'file_shares')
-        logger.info('custom_file_name 字段添加成功')
+        logger.dbInfo('custom_file_name 字段添加成功')
       }
 
       if (!hasCustomFileExtension) {
-        logger.info('添加 custom_file_extension 字段到 file_shares 表...')
+        logger.dbInfo('添加 custom_file_extension 字段到 file_shares 表...')
         sqlite.exec('ALTER TABLE file_shares ADD COLUMN custom_file_extension TEXT')
         logger.database('ALTER', 'file_shares')
-        logger.info('custom_file_extension 字段添加成功')
+        logger.dbInfo('custom_file_extension 字段添加成功')
       }
 
       if (!hasCustomFileSize) {
-        logger.info('添加 custom_file_size 字段到 file_shares 表...')
+        logger.dbInfo('添加 custom_file_size 字段到 file_shares 表...')
         sqlite.exec('ALTER TABLE file_shares ADD COLUMN custom_file_size INTEGER')
         logger.database('ALTER', 'file_shares')
-        logger.info('custom_file_size 字段添加成功')
+        logger.dbInfo('custom_file_size 字段添加成功')
       }
 
       // 修复 share_token 字段的 UNIQUE 约束问题
       const shareTokenColumn = fileSharesColumns.find((col: any) => col.name === 'share_token')
       if (shareTokenColumn && (shareTokenColumn as any).notnull === 1) {
-        logger.info('修复 share_token 字段约束...')
+        logger.dbInfo('修复 share_token 字段约束...')
         // 由于 SQLite 不支持直接修改列约束，我们需要重建表
         sqlite.exec(`
           CREATE TABLE file_shares_new (
@@ -456,7 +456,7 @@ async function initializeDatabase() {
           ALTER TABLE file_shares_new RENAME TO file_shares;
         `)
         logger.database('REBUILD', 'file_shares')
-        logger.info('file_shares 表结构修复完成')
+        logger.dbInfo('file_shares 表结构修复完成')
       }
     }
 
@@ -487,7 +487,7 @@ async function initializeDatabase() {
                   '${process.env.SMTP_USER}', '${process.env.SMTP_PASS}', 1, ${Date.now()})
         `)
         logger.database('INSERT', 'smtp_config')
-        logger.info('已从环境变量初始化 SMTP 配置（建议在管理面板中管理）')
+        logger.dbInfo('已从环境变量初始化 SMTP 配置（建议在管理面板中管理）')
       } else {
         // 创建默认的禁用配置
         sqlite.exec(`
@@ -495,7 +495,7 @@ async function initializeDatabase() {
           VALUES (1, 0, '', 465, '', '', 1, ${Date.now()})
         `)
         logger.database('INSERT', 'smtp_config')
-        logger.info('已创建默认 SMTP 配置（禁用状态），请在管理面板中配置')
+        logger.dbInfo('已创建默认 SMTP 配置（禁用状态），请在管理面板中配置')
       }
     }
 
@@ -511,7 +511,7 @@ async function initializeDatabase() {
     // 验证所有表是否正确创建
     await validateDatabaseTables()
 
-    logger.info('数据库初始化完成')
+    logger.startup('数据库初始化完成')
   } catch (error) {
     logger.error('数据库初始化失败:', error)
     throw error
@@ -534,7 +534,7 @@ async function initializeQuotaSystem() {
         VALUES ('${adminQuotaId}', 'admin', ${10 * 1024 * 1024 * 1024}, '管理员默认配额：10GB', ${Date.now()}, ${Date.now()})
       `)
       logger.database('INSERT', 'role_quota_config')
-      logger.info('已创建管理员默认配额配置：10GB')
+      logger.dbInfo('已创建管理员默认配额配置：10GB')
     }
 
     if (userQuotaExists.count === 0) {
@@ -544,7 +544,7 @@ async function initializeQuotaSystem() {
         VALUES ('${userQuotaId}', 'user', ${1 * 1024 * 1024 * 1024}, '普通用户默认配额：1GB', ${Date.now()}, ${Date.now()})
       `)
       logger.database('INSERT', 'role_quota_config')
-      logger.info('已创建普通用户默认配额配置：1GB')
+      logger.dbInfo('已创建普通用户默认配额配置：1GB')
     }
 
     // 为现有用户创建配额记录
@@ -575,10 +575,10 @@ async function initializeQuotaSystem() {
         VALUES ('${quotaId}', '${user.id}', ${defaultQuota}, ${totalUsedStorage}, '${user.role}', ${Date.now()}, ${Date.now()})
       `)
       logger.database('INSERT', 'user_quotas')
-      logger.info(`已为用户 ${user.id} (${user.role}) 创建配额记录：${Math.round(defaultQuota / 1024 / 1024 / 1024)}GB，已使用：${Math.round(totalUsedStorage / 1024 / 1024)}MB (本地: ${Math.round(localStorage / 1024 / 1024)}MB, R2: ${Math.round(r2Storage / 1024 / 1024)}MB)`)
+      logger.dbInfo(`已为用户 ${user.id} (${user.role}) 创建配额记录：${Math.round(defaultQuota / 1024 / 1024 / 1024)}GB，已使用：${Math.round(totalUsedStorage / 1024 / 1024)}MB (本地: ${Math.round(localStorage / 1024 / 1024)}MB, R2: ${Math.round(r2Storage / 1024 / 1024)}MB)`)
     }
 
-    logger.info('用户配额系统初始化完成')
+    logger.dbInfo('用户配额系统初始化完成')
   } catch (error) {
     logger.error('用户配额系统初始化失败:', error)
     throw error
@@ -597,7 +597,7 @@ async function fixFileDirectLinksTable() {
     `).get()
 
     if (!tableExists) {
-      logger.info('file_direct_links 表不存在，重新创建...')
+      logger.dbInfo('file_direct_links 表不存在，重新创建...')
       sqlite.exec(`
         CREATE TABLE file_direct_links (
           id TEXT PRIMARY KEY,
@@ -614,7 +614,7 @@ async function fixFileDirectLinksTable() {
         );
       `)
       logger.database('CREATE', 'file_direct_links')
-      logger.info('file_direct_links 表创建成功')
+      logger.dbInfo('file_direct_links 表创建成功')
       return
     }
 
@@ -630,11 +630,11 @@ async function fixFileDirectLinksTable() {
     const missingColumns = requiredColumns.filter(col => !columnNames.includes(col))
 
     if (missingColumns.length > 0) {
-      logger.info(`file_direct_links 表缺少字段: ${missingColumns.join(', ')}`)
+      logger.dbInfo(`file_direct_links 表缺少字段: ${missingColumns.join(', ')}`)
 
       // 特别处理 token 字段
       if (missingColumns.includes('token')) {
-        logger.info('添加 token 字段到 file_direct_links 表...')
+        logger.dbInfo('添加 token 字段到 file_direct_links 表...')
 
         // 为现有记录生成token
         const { nanoid } = await import('nanoid')
@@ -650,7 +650,7 @@ async function fixFileDirectLinksTable() {
         }
 
         logger.database('ALTER', 'file_direct_links')
-        logger.info('token 字段添加成功，已为现有记录生成token')
+        logger.dbInfo('token 字段添加成功，已为现有记录生成token')
       }
 
       // 处理其他缺失字段
@@ -672,19 +672,19 @@ async function fixFileDirectLinksTable() {
             continue
         }
 
-        logger.info(`添加 ${column} 字段到 file_direct_links 表...`)
+        logger.dbInfo(`添加 ${column} 字段到 file_direct_links 表...`)
         sqlite.exec(`ALTER TABLE file_direct_links ADD COLUMN ${columnDef}`)
         logger.database('ALTER', 'file_direct_links')
-        logger.info(`${column} 字段添加成功`)
+        logger.dbInfo(`${column} 字段添加成功`)
       }
 
       // 更新 updated_at 字段为 created_at 的值（如果为0）
       if (missingColumns.includes('updated_at')) {
         sqlite.exec(`UPDATE file_direct_links SET updated_at = created_at WHERE updated_at = 0`)
-        logger.info('已更新现有记录的 updated_at 字段')
+        logger.dbInfo('已更新现有记录的 updated_at 字段')
       }
     } else {
-      logger.info('file_direct_links 表结构正确')
+      logger.dbInfo('file_direct_links 表结构正确')
     }
 
   } catch (error) {
@@ -705,7 +705,7 @@ async function fixDirectLinkAccessLogsTable() {
     `).get()
 
     if (!tableExists) {
-      logger.info('direct_link_access_logs 表不存在，重新创建...')
+      logger.dbInfo('direct_link_access_logs 表不存在，重新创建...')
       sqlite.exec(`
         CREATE TABLE direct_link_access_logs (
           id TEXT PRIMARY KEY,
@@ -721,7 +721,7 @@ async function fixDirectLinkAccessLogsTable() {
         );
       `)
       logger.database('CREATE', 'direct_link_access_logs')
-      logger.info('direct_link_access_logs 表创建成功')
+      logger.dbInfo('direct_link_access_logs 表创建成功')
       return
     }
 
@@ -737,7 +737,7 @@ async function fixDirectLinkAccessLogsTable() {
     const missingColumns = requiredColumns.filter(col => !columnNames.includes(col))
 
     if (missingColumns.length > 0) {
-      logger.info(`direct_link_access_logs 表缺少字段: ${missingColumns.join(', ')}，重建表...`)
+      logger.dbInfo(`direct_link_access_logs 表缺少字段: ${missingColumns.join(', ')}，重建表...`)
 
       // 备份现有数据
       const existingData = sqlite.prepare("SELECT * FROM direct_link_access_logs").all()
@@ -785,9 +785,9 @@ async function fixDirectLinkAccessLogsTable() {
       }
 
       logger.database('REBUILD', 'direct_link_access_logs')
-      logger.info('direct_link_access_logs 表重建完成')
+      logger.dbInfo('direct_link_access_logs 表重建完成')
     } else {
-      logger.info('direct_link_access_logs 表结构正确')
+      logger.dbInfo('direct_link_access_logs 表结构正确')
     }
 
   } catch (error) {
@@ -808,7 +808,7 @@ async function fixIPBansTable() {
     `).get()
 
     if (!tableExists) {
-      logger.info('ip_bans 表不存在，重新创建...')
+      logger.dbInfo('ip_bans 表不存在，重新创建...')
       sqlite.exec(`
         CREATE TABLE ip_bans (
           id TEXT PRIMARY KEY,
@@ -824,7 +824,7 @@ async function fixIPBansTable() {
         );
       `)
       logger.database('CREATE', 'ip_bans')
-      logger.info('ip_bans 表创建成功')
+      logger.dbInfo('ip_bans 表创建成功')
       return
     }
 
@@ -840,7 +840,7 @@ async function fixIPBansTable() {
     const missingColumns = requiredColumns.filter(col => !columnNames.includes(col))
 
     if (missingColumns.length > 0) {
-      logger.info(`ip_bans 表缺少字段: ${missingColumns.join(', ')}，重建表...`)
+      logger.dbInfo(`ip_bans 表缺少字段: ${missingColumns.join(', ')}，重建表...`)
 
       // 备份现有数据
       const existingData = sqlite.prepare("SELECT * FROM ip_bans").all()
@@ -887,9 +887,9 @@ async function fixIPBansTable() {
       }
 
       logger.database('REBUILD', 'ip_bans')
-      logger.info('ip_bans 表重建完成')
+      logger.dbInfo('ip_bans 表重建完成')
     } else {
-      logger.info('ip_bans 表结构正确')
+      logger.dbInfo('ip_bans 表结构正确')
     }
 
   } catch (error) {
@@ -901,7 +901,7 @@ async function fixIPBansTable() {
 // 验证数据库表是否正确创建
 async function validateDatabaseTables() {
   try {
-    logger.info('🔍 验证数据库表结构...')
+    logger.dbInfo('🔍 验证数据库表结构...')
 
     // 定义所有应该存在的表
     const requiredTables = [
@@ -940,10 +940,10 @@ async function validateDatabaseTables() {
     // 检查额外的表（可能是旧版本遗留）
     const extraTables = existingTables.filter(table => !requiredTables.includes(table))
     if (extraTables.length > 0) {
-      logger.info(`ℹ️ 发现额外的表（可能是旧版本遗留）: ${extraTables.join(', ')}`)
+      logger.dbInfo(`ℹ️ 发现额外的表（可能是旧版本遗留）: ${extraTables.join(', ')}`)
     }
 
-    logger.info(`✅ 数据库表验证通过，共 ${requiredTables.length} 个表`)
+    logger.dbInfo(`✅ 数据库表验证通过，共 ${requiredTables.length} 个表`)
 
     // 记录每个表的记录数
     for (const table of requiredTables) {
@@ -980,7 +980,7 @@ async function initializeAdminAccount() {
       `)
 
       logger.database('INSERT', 'users')
-      logger.info('✅ 管理员账户创建成功')
+      logger.dbInfo('✅ 管理员账户创建成功')
 
       // 在控制台显示登录信息
       console.log('\n' + '='.repeat(80))
@@ -993,7 +993,7 @@ async function initializeAdminAccount() {
       console.log('='.repeat(80) + '\n')
 
     } else {
-      logger.info('管理员账户已存在，跳过创建')
+      logger.dbInfo('管理员账户已存在，跳过创建')
     }
   } catch (error) {
     logger.error('管理员账户初始化失败:', error)

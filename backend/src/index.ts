@@ -14,7 +14,6 @@ import { shareRoutes } from "./routes/share"
 import { pickupRoutes } from "./routes/pickup"
 import { directLinksRoutes } from "./routes/direct-links"
 import { logger } from "./utils/logger"
-import { loggingMiddleware } from "./middleware/logging"
 import { startCleanupScheduler } from "./utils/cleanup"
 
 // 检查必要的环境变量
@@ -58,11 +57,69 @@ function validateEnvironmentVariables() {
 // 启动前检查环境变量
 validateEnvironmentVariables()
 
-logger.info('🚀 正在启动 NetDisk API 服务器...')
+logger.startup('🚀 正在启动 NetDisk API 服务器...')
+
+// 获取客户端IP地址的辅助函数
+function getClientIp(request: Request, headers: Record<string, string | undefined>): string {
+  // 尝试从各种可能的头部获取真实IP
+  const xForwardedFor = headers['x-forwarded-for']
+  const cfConnectingIp = headers['cf-connecting-ip']
+  const xRealIp = headers['x-real-ip']
+  const xClientIp = headers['x-client-ip']
+
+  if (xForwardedFor) {
+    return xForwardedFor.split(',')[0].trim()
+  }
+  if (cfConnectingIp) return cfConnectingIp
+  if (xRealIp) return xRealIp
+  if (xClientIp) return xClientIp
+
+  // 尝试从URL获取（对于本地开发）
+  try {
+    const url = new URL(request.url)
+    if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+      return '127.0.0.1'
+    }
+    return url.hostname
+  } catch {
+    return '127.0.0.1' // 默认本地IP
+  }
+}
 
 const app = new Elysia()
-  // 添加日志中间件（在其他中间件之前）
-  .use(loggingMiddleware)
+  // 添加简单的HTTP日志中间件
+  .onRequest(({ request, set }) => {
+    // 记录请求开始时间
+    const startTime = Date.now()
+    const url = new URL(request.url)
+    const path = url.pathname
+    const headers = Object.fromEntries(request.headers.entries())
+    const clientIp = getClientIp(request, headers)
+
+    // 存储信息供后续使用
+    set.headers = set.headers || {}
+    set.headers['x-start-time'] = startTime.toString()
+    set.headers['x-client-ip'] = clientIp
+    set.headers['x-request-path'] = path
+  })
+  .onAfterResponse(({ request, set }) => {
+    const startTime = parseInt(set.headers?.['x-start-time'] as string || '0')
+    const clientIp = set.headers?.['x-client-ip'] as string || 'unknown'
+    const requestPath = set.headers?.['x-request-path'] as string || new URL(request.url).pathname
+
+    // 跳过健康检查等路径
+    const skipPaths = ['/health', '/favicon.ico', '/robots.txt']
+    if (skipPaths.some(skipPath => requestPath.startsWith(skipPath))) {
+      return
+    }
+
+    // 计算响应时间
+    const duration = Date.now() - startTime
+    const statusCode = typeof set.status === 'number' ? set.status : 200
+
+    // 使用我们自己的 logger 记录HTTP请求
+    logger.http(request.method, requestPath, statusCode, duration, undefined, clientIp)
+  })
   .use(cors()) // 允许所有跨域请求
   .use(
     swagger({
@@ -89,6 +146,10 @@ const app = new Elysia()
   .get("/health", () => {
     logger.debug('健康检查请求 - /health')
     return { status: "ok", timestamp: new Date().toISOString() }
+  })
+  .get("/test-log", () => {
+    // 测试路由被调用，应该在HTTP日志中显示
+    return { message: "Test log route", timestamp: new Date().toISOString() }
   })
   .use(authRoutes)
   .use(fileRoutes)
@@ -260,9 +321,9 @@ const app = new Elysia()
 const port = app.server?.port || process.env.PORT || 8080
 app.listen(port)
 
-logger.info(`NetDisk API 服务器启动成功`)
-logger.info(`服务器地址: http://localhost:${port}`)
-logger.info(`健康检查: http://localhost:${port}/health`)
+logger.startup(`NetDisk API 服务器启动成功`)
+logger.startup(`服务器地址: http://localhost:${port}`)
+logger.startup(`健康检查: http://localhost:${port}/health`)
 
 // 启动清理调度器
 startCleanupScheduler()

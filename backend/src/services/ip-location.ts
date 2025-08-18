@@ -73,7 +73,6 @@ export class IPLocationService {
         timestamp: Date.now()
       })
 
-      logger.info(`IP归属地查询成功: ${ip} -> ${result.data.country} ${result.data.province} ${result.data.city}`)
       return result.data
 
     } catch (error) {

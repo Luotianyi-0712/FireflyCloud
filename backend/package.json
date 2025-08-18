@@ -23,6 +23,7 @@
     "drizzle-kit": "^0.20.0",
     "drizzle-orm": "^0.30.0",
     "elysia": "^1.0.0",
+    "logixlysia": "^5.1.0",
     "nanoid": "^5.0.0",
     "nodemailer": "^7.0.5"
   },

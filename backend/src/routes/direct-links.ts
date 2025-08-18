@@ -56,8 +56,6 @@ export const directLinksRoutes = new Elysia({ prefix: "/direct-links" })
         .where(eq(fileDirectLinks.userId, user.userId))
         .orderBy(desc(fileDirectLinks.createdAt))
 
-      logger.info(`获取用户直链列表成功: ${user.userId} - 共 ${directLinks.length} 个直链`)
-
       return {
         directLinks: directLinks.map(link => ({
           id: link.id,
@@ -123,8 +121,6 @@ export const directLinksRoutes = new Elysia({ prefix: "/direct-links" })
         .get()
 
       const total = totalResult?.count || 0
-
-      logger.info(`获取直链访问日志成功: ${linkId} - 共 ${total} 条记录`)
 
       return {
         logs: logs.map(log => ({
