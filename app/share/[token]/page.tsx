@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dialog"
 import {
   Download,
-  File,
+  File as FileIcon,
   Calendar,
   HardDrive,
   Shield,
@@ -231,7 +231,7 @@ export default function SharePage() {
             
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <File className="h-5 w-5" />
+                <FileIcon className="h-5 w-5" />
                 文件分享
               </CardTitle>
               <CardDescription>

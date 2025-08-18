@@ -12,6 +12,7 @@ import { storageRoutes } from "./routes/storage"
 import { downloadRoutes } from "./routes/download"
 import { shareRoutes } from "./routes/share"
 import { pickupRoutes } from "./routes/pickup"
+import { directLinksRoutes } from "./routes/direct-links"
 import { logger } from "./utils/logger"
 import { loggingMiddleware } from "./middleware/logging"
 import { startCleanupScheduler } from "./utils/cleanup"
@@ -97,16 +98,171 @@ const app = new Elysia()
   .use(downloadRoutes)
   .use(shareRoutes)
   .use(pickupRoutes)
-  .listen(process.env.PORT || 8080)
+  .use(directLinksRoutes)
+  // 新格式直链访问路由 (/dl/:filename?token=xxxxx) - 使用专用前缀避免冲突
+  .get("/dl/:filename", async ({ params, query, set, headers }) => {
+    try {
+      const { filename } = params
+      const { token } = query as { token?: string }
+
+      // 如果没有token参数，这不是新格式直链，返回404
+      if (!token) {
+        set.status = 404
+        return { error: "Direct link requires token parameter" }
+      }
+
+      // 导入必要的模块
+      const { db } = require("./db")
+      const { fileDirectLinks, files, storageConfig, directLinkAccessLogs } = require("./db/schema")
+      const { eq } = require("drizzle-orm")
+      const { IPBanService } = require("./services/ip-ban")
+      const { IPLocationService } = require("./services/ip-location")
+      const { StorageService } = require("./services/storage")
+      const { nanoid } = require("nanoid")
+
+      logger.debug(`新格式直链访问: ${filename}?token=${token}`)
+
+      // 根据token查找直链记录
+      const linkRecord = await db
+        .select()
+        .from(fileDirectLinks)
+        .where(eq(fileDirectLinks.token, token))
+        .get()
+
+      if (!linkRecord) {
+        logger.warn(`直链token无效: ${token}`)
+        set.status = 404
+        return { error: "Direct link not found" }
+      }
+
+      // 验证文件名是否匹配
+      if (linkRecord.directName !== filename) {
+        logger.warn(`文件名不匹配: 期望 ${linkRecord.directName}, 实际 ${filename}`)
+        set.status = 404
+        return { error: "File name mismatch" }
+      }
+
+      // 检查直链是否启用
+      if (!linkRecord.enabled) {
+        logger.warn(`直链已禁用: ${filename}`)
+        set.status = 403
+        return { error: "Direct link disabled" }
+      }
+
+      // 获取客户端IP并检查是否被封禁
+      const getClientIP = (headers: Record<string, string | undefined>): string => {
+        return headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+               headers['x-real-ip'] ||
+               headers['cf-connecting-ip'] ||
+               'unknown'
+      }
+
+      const clientIP = getClientIP(headers)
+      const isIPBanned = await IPBanService.isIPBanned(clientIP, linkRecord.id)
+
+      if (isIPBanned) {
+        logger.warn(`IP已被封禁，拒绝访问: ${clientIP} - 直链: ${filename}`)
+        set.status = 403
+        return { error: "Access denied: IP banned" }
+      }
+
+      // 获取文件信息
+      const file = await db
+        .select()
+        .from(files)
+        .where(eq(files.id, linkRecord.fileId))
+        .get()
+
+      if (!file) {
+        logger.warn(`直链对应的文件未找到: ${linkRecord.fileId}`)
+        set.status = 404
+        return { error: "File not found" }
+      }
+
+      // 记录访问日志
+      const userAgent = headers['user-agent'] || ''
+
+      // 异步查询IP归属地信息
+      IPLocationService.getIPLocation(clientIP).then(async (locationInfo) => {
+        try {
+          await db.insert(directLinkAccessLogs).values({
+            id: nanoid(),
+            directLinkId: linkRecord.id,
+            ipAddress: clientIP,
+            userAgent: userAgent,
+            country: locationInfo?.country || '',
+            province: locationInfo?.province || '',
+            city: locationInfo?.city || '',
+            isp: locationInfo?.isp || '',
+            accessedAt: Date.now(),
+          })
+        } catch (error) {
+          logger.error('记录直链访问日志失败:', error)
+        }
+      }).catch(error => {
+        logger.error('查询IP归属地失败:', error)
+      })
+
+      // 增加访问计数
+      await db
+        .update(fileDirectLinks)
+        .set({
+          accessCount: linkRecord.accessCount + 1,
+          updatedAt: Date.now()
+        })
+        .where(eq(fileDirectLinks.id, linkRecord.id))
+
+      // 获取存储配置
+      const config = await db.select().from(storageConfig).get()
+      if (!config) {
+        logger.error("存储配置未找到")
+        set.status = 500
+        return { error: "Storage not configured" }
+      }
+
+      logger.info(`新格式直链访问: ${file.originalName} - 用户: ${linkRecord.userId} - 访问次数: ${linkRecord.accessCount + 1}`)
+
+      const storageService = new StorageService(config)
+
+      if (config.storageType === "r2") {
+        // 对于R2存储，返回预签名URL进行重定向
+        const downloadUrl = await storageService.getDownloadUrl(file.storagePath)
+        set.status = 302
+        set.headers["Location"] = downloadUrl
+        return
+      } else {
+        // 对于本地存储，直接返回文件流
+        const fs = await import("fs")
+
+        if (!fs.existsSync(file.storagePath)) {
+          logger.error(`本地文件不存在: ${file.storagePath}`)
+          set.status = 404
+          return { error: "File not found on storage" }
+        }
+
+        const fileBuffer = fs.readFileSync(file.storagePath)
+
+        // 设置响应头
+        set.headers["Content-Type"] = file.mimeType || "application/octet-stream"
+        set.headers["Content-Disposition"] = `attachment; filename="${encodeURIComponent(file.originalName)}"`
+        set.headers["Content-Length"] = file.size.toString()
+
+        // 直接返回Buffer
+        return fileBuffer
+      }
+    } catch (error) {
+      logger.error("新格式直链访问失败:", error)
+      set.status = 500
+      return { error: "Direct link access failed" }
+    }
+  })
 
 const port = app.server?.port || process.env.PORT || 8080
+app.listen(port)
+
 logger.info(`NetDisk API 服务器启动成功`)
-logger.info(`🌐 服务地址: http://localhost:${port}`)
-logger.info(`📚 API 文档: http://localhost:${port}/swagger`)
-logger.info(`💾 数据库: ${process.env.DATABASE_URL || './netdisk.db'}`)
-logger.info(`🔧 环境: ${process.env.NODE_ENV || 'development'}`)
+logger.info(`服务器地址: http://localhost:${port}`)
+logger.info(`健康检查: http://localhost:${port}/health`)
 
-// 启动下载令牌清理调度器
+// 启动清理调度器
 startCleanupScheduler()
-
-logger.info('服务器已准备就绪，等待请求...')

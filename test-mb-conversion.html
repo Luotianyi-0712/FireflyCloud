@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MB到字节转换测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-case {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+        }
+        .result {
+            font-weight: bold;
+            color: #333;
+        }
+        .success {
+            color: #28a745;
+        }
+        .error {
+            color: #dc3545;
+        }
+        input {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>守门模式文件大小转换测试</h1>
+        <p>测试前端MB输入转换为后端字节存储的逻辑</p>
+        
+        <div class="test-case">
+            <h3>自动测试用例</h3>
+            <div id="auto-tests"></div>
+        </div>
+        
+        <div class="test-case">
+            <h3>手动测试</h3>
+            <label>输入文件大小 (MB): </label>
+            <input type="number" id="mb-input" step="0.01" min="0" placeholder="例如: 1.5">
+            <button onclick="testConversion()">转换</button>
+            <div id="manual-result"></div>
+        </div>
+    </div>
+
+    <script>
+        // 模拟前端的转换逻辑
+        function convertMBToBytes(mbValue) {
+            if (!mbValue || mbValue === "") return undefined;
+            return Math.round(parseFloat(mbValue) * 1024 * 1024);
+        }
+
+        // 格式化字节为可读格式
+        function formatBytes(bytes) {
+            if (bytes === 0) return "0 字节";
+            const k = 1024;
+            const sizes = ["字节", "KB", "MB", "GB"];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Number.parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+        }
+
+        // 自动测试用例
+        function runAutoTests() {
+            const testCases = [
+                { input: "1", expected: 1048576, description: "1MB = 1048576字节" },
+                { input: "1.5", expected: 1572864, description: "1.5MB = 1572864字节" },
+                { input: "0.5", expected: 524288, description: "0.5MB = 524288字节" },
+                { input: "10", expected: 10485760, description: "10MB = 10485760字节" },
+                { input: "0.001", expected: 1024, description: "0.001MB ≈ 1024字节" },
+                { input: "", expected: undefined, description: "空值 = undefined" },
+                { input: "0", expected: 0, description: "0MB = 0字节" }
+            ];
+
+            const resultsDiv = document.getElementById('auto-tests');
+            let html = '';
+
+            testCases.forEach((testCase, index) => {
+                const result = convertMBToBytes(testCase.input);
+                const passed = result === testCase.expected;
+                
+                html += `
+                    <div style="margin: 5px 0; padding: 5px; border-left: 3px solid ${passed ? '#28a745' : '#dc3545'};">
+                        <strong>测试 ${index + 1}:</strong> ${testCase.description}<br>
+                        <span>输入: "${testCase.input}" MB</span><br>
+                        <span>期望: ${testCase.expected}</span><br>
+                        <span>实际: ${result}</span><br>
+                        <span class="${passed ? 'success' : 'error'}">
+                            ${passed ? '✓ 通过' : '✗ 失败'}
+                        </span>
+                    </div>
+                `;
+            });
+
+            resultsDiv.innerHTML = html;
+        }
+
+        // 手动测试
+        function testConversion() {
+            const input = document.getElementById('mb-input').value;
+            const result = convertMBToBytes(input);
+            const resultDiv = document.getElementById('manual-result');
+            
+            if (result === undefined) {
+                resultDiv.innerHTML = `
+                    <div style="margin-top: 10px;">
+                        <span class="result">结果: undefined (空值不发送到后端)</span>
+                    </div>
+                `;
+            } else {
+                resultDiv.innerHTML = `
+                    <div style="margin-top: 10px;">
+                        <span class="result">输入: ${input} MB</span><br>
+                        <span class="result">转换结果: ${result} 字节</span><br>
+                        <span class="result">格式化显示: ${formatBytes(result)}</span><br>
+                        <span style="color: #666; font-size: 0.9em;">
+                            发送到后端的JSON: {"customFileSize": ${result}}
+                        </span>
+                    </div>
+                `;
+            }
+        }
+
+        // 页面加载时运行自动测试
+        window.onload = function() {
+            runAutoTests();
+        };
+    </script>
+</body>
+</html>

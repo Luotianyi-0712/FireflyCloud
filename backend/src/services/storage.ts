@@ -4,6 +4,7 @@ import { writeFile, unlink, mkdir } from "fs/promises"
 import { existsSync } from "fs"
 import path from "path"
 import { logger } from "../utils/logger"
+import { OneDriveService, OneDriveConfig } from "./onedrive"
 
 // R2存储统计缓存
 interface R2StorageCache {
@@ -21,6 +22,7 @@ const r2StorageCache = new Map<string, R2StorageCache>()
 
 export class StorageService {
   private s3Client?: S3Client
+  private oneDriveService?: OneDriveService
   private config: any
 
   constructor(config: any) {
@@ -36,6 +38,26 @@ export class StorageService {
         },
       })
     }
+
+    if ((config.storageType === "onedrive" || config.enableMixedMode) && config.oneDriveClientId) {
+      this.oneDriveService = new OneDriveService({
+        clientId: config.oneDriveClientId,
+        clientSecret: config.oneDriveClientSecret,
+        tenantId: config.oneDriveTenantId,
+      })
+    }
+  }
+
+  // 设置OneDrive访问令牌
+  setOneDriveAccessToken(accessToken: string) {
+    if (this.oneDriveService) {
+      this.oneDriveService.setAccessToken(accessToken)
+    }
+  }
+
+  // 获取OneDrive服务实例
+  getOneDriveService(): OneDriveService | undefined {
+    return this.oneDriveService
   }
 
   async uploadFile(file: File, filename: string): Promise<string> {
@@ -43,6 +65,8 @@ export class StorageService {
 
     if (this.config.storageType === "r2" && this.s3Client) {
       return this.uploadToR2(file, filename)
+    } else if (this.config.storageType === "onedrive" && this.oneDriveService) {
+      return this.uploadToOneDrive(file, filename)
     } else {
       return this.uploadToLocal(file, filename)
     }
@@ -83,6 +107,18 @@ export class StorageService {
     return filePath
   }
 
+  private async uploadToOneDrive(file: File, filename: string): Promise<string> {
+    if (!this.oneDriveService) throw new Error("OneDrive service not configured")
+
+    logger.debug(`上传文件到 OneDrive: ${filename}`)
+
+    // 上传到OneDrive根目录
+    const result = await this.oneDriveService.uploadFile(file, "/", filename)
+
+    logger.info(`文件成功上传到 OneDrive: ${filename}`)
+    return result.id // 返回OneDrive文件ID作为存储路径
+  }
+
   async getDownloadUrl(storagePath: string): Promise<string> {
     logger.debug(`生成下载链接: ${storagePath} (${this.config.storageType})`)
 
@@ -94,6 +130,10 @@ export class StorageService {
 
       const url = await getSignedUrl(this.s3Client, command, { expiresIn: 3600 })
       logger.info(`生成 R2 下载链接: ${storagePath}`)
+      return url
+    } else if (this.config.storageType === "onedrive" && this.oneDriveService) {
+      const url = await this.oneDriveService.getDownloadUrl(storagePath)
+      logger.info(`生成 OneDrive 下载链接: ${storagePath}`)
       return url
     } else {
       // For local storage, return a direct file serving URL
@@ -114,6 +154,9 @@ export class StorageService {
 
       await this.s3Client.send(command)
       logger.info(`文件从 R2 删除成功: ${storagePath}`)
+    } else if (this.config.storageType === "onedrive" && this.oneDriveService) {
+      await this.oneDriveService.deleteItem(storagePath)
+      logger.info(`文件从 OneDrive 删除成功: ${storagePath}`)
     } else {
       await unlink(storagePath)
       logger.info(`文件从本地删除成功: ${storagePath}`)
@@ -301,12 +344,16 @@ export class StorageService {
       const buffer = Buffer.concat(chunks)
       logger.info(`成功从 R2 下载文件: ${storagePath}, 大小: ${buffer.length} bytes`)
       return buffer
+    } else if (this.config.storageType === "onedrive" && this.oneDriveService) {
+      const buffer = await this.oneDriveService.downloadFile(storagePath)
+      logger.info(`成功从 OneDrive 下载文件: ${storagePath}, 大小: ${buffer.length} bytes`)
+      return buffer
     } else {
       // For local storage, read file directly
       const fs = await import("fs/promises")
       // 检查 storagePath 是否已经是绝对路径
-      const filePath = path.isAbsolute(storagePath) 
-        ? storagePath 
+      const filePath = path.isAbsolute(storagePath)
+        ? storagePath
         : path.join(process.cwd(), "uploads", storagePath)
       const buffer = await fs.readFile(filePath)
       logger.info(`成功从本地读取文件: ${storagePath}, 大小: ${buffer.length} bytes`)

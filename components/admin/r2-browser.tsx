@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/breadcrumb"
 import {
   Folder,
-  File,
+  File as FileIcon,
   ArrowLeft,
   Home,
   RefreshCw,
@@ -364,7 +364,7 @@ export function R2Browser({ open, onOpenChange, onSelectPath, title, description
                       return (
                         <TableRow key={file.key}>
                           <TableCell className="flex items-center gap-2">
-                            <File className="h-4 w-4 text-gray-500" />
+                            <FileIcon className="h-4 w-4 text-gray-500" />
                             {fileName}
                           </TableCell>
                           <TableCell>

@@ -7,7 +7,6 @@ import { FileList } from "./file-list"
 import { FolderTree } from "./folder-tree"
 import { FolderBreadcrumb } from "./folder-breadcrumb"
 import { QuotaDisplay } from "./quota-display"
-
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
@@ -106,6 +105,9 @@ export function FileManager() {
           console.log("No R2 mount or failed to fetch R2 contents:", r2Error)
           setR2MountInfo(null)
         }
+
+        // OneDrive 功能暂时禁用
+        // 尝试获取 OneDrive 挂载内容 - 功能开发中，敬请期待
       } else {
         setR2MountInfo(null)
       }
@@ -154,7 +156,7 @@ export function FileManager() {
   }
   
   // 处理文件列表中的文件夹导航
-  const handleFolderNavigate = (folderId: string | null, isR2Folder?: boolean, r2Path?: string, mountPointId?: string) => {
+  const handleFolderNavigate = (folderId: string | null, isR2Folder?: boolean, r2Path?: string, mountPointId?: string, isOneDriveFolder?: boolean, oneDrivePath?: string) => {
     if (isR2Folder && r2Path && mountPointId) {
       // 这是一个R2文件夹，需要特殊处理
       // 我们需要获取当前挂载点信息，更新当前R2挂载路径并保持在同一文件夹中
@@ -215,6 +217,11 @@ export function FileManager() {
             setRefreshTrigger(prev => prev + 1);
           });
       }
+    } else if (isOneDriveFolder && oneDrivePath && mountPointId) {
+      // OneDrive 功能暂时禁用 - 敬请期待
+      console.log("OneDrive 功能暂时禁用，敬请期待后续版本更新")
+      // 回退到普通文件夹导航
+      handleFolderSelect(folderId);
     } else {
       // 普通文件夹导航
       handleFolderSelect(folderId);
@@ -326,6 +333,8 @@ export function FileManager() {
                 </CardContent>
               </Card>
             </TabsContent>
+
+
           </Tabs>
         </div>
       </div>

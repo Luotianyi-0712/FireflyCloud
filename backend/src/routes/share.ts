@@ -57,21 +57,40 @@ export const shareRoutes = new Elysia({ prefix: "/share" })
 
       logger.info(`获取分享信息成功: ${file.originalName} - 分享ID: ${shareRecord.id}`)
 
+      // 如果启用了守门模式且有自定义信息，则使用自定义信息
+      const displayFile = shareRecord.gatekeeper && (
+        shareRecord.customFileName ||
+        shareRecord.customFileExtension ||
+        shareRecord.customFileSize !== null
+      ) ? {
+        id: file.id,
+        originalName: shareRecord.customFileName || file.originalName,
+        size: shareRecord.customFileSize !== null ? shareRecord.customFileSize : file.size,
+        mimeType: shareRecord.customFileExtension ?
+          `application/${shareRecord.customFileExtension}` : file.mimeType,
+        createdAt: file.createdAt,
+      } : {
+        id: file.id,
+        originalName: file.originalName,
+        size: file.size,
+        mimeType: file.mimeType,
+        createdAt: file.createdAt,
+      }
+
       return {
-        file: {
-          id: file.id,
-          originalName: file.originalName,
-          size: file.size,
-          mimeType: file.mimeType,
-          createdAt: file.createdAt,
-        },
+        file: displayFile,
         share: {
           requireLogin: shareRecord.requireLogin,
           hasPickupCode: false, // 分享链接不使用取件码
           accessCount: shareRecord.accessCount,
           createdAt: shareRecord.createdAt,
           expiresAt: shareRecord.expiresAt,
-          gatekeeper: shareRecord.gatekeeper
+          gatekeeper: shareRecord.gatekeeper,
+          customInfo: shareRecord.gatekeeper ? {
+            customFileName: shareRecord.customFileName,
+            customFileExtension: shareRecord.customFileExtension,
+            customFileSize: shareRecord.customFileSize
+          } : null
         }
       }
     } catch (error) {

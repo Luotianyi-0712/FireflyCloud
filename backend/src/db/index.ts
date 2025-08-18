@@ -57,6 +57,9 @@ async function initializeDatabase() {
         r2_access_key TEXT,
         r2_secret_key TEXT,
         r2_bucket TEXT,
+        onedrive_client_id TEXT,
+        onedrive_client_secret TEXT,
+        onedrive_tenant_id TEXT,
         enable_mixed_mode INTEGER NOT NULL DEFAULT 0,
         updated_at INTEGER NOT NULL
       );
@@ -66,6 +69,32 @@ async function initializeDatabase() {
         user_id TEXT NOT NULL,
         folder_id TEXT NOT NULL,
         r2_path TEXT NOT NULL,
+        mount_name TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+        FOREIGN KEY (folder_id) REFERENCES folders (id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS onedrive_auth (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        access_token TEXT NOT NULL,
+        refresh_token TEXT NOT NULL,
+        expires_at INTEGER NOT NULL,
+        scope TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS onedrive_mount_points (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        folder_id TEXT NOT NULL,
+        onedrive_path TEXT NOT NULL,
+        onedrive_item_id TEXT,
         mount_name TEXT NOT NULL,
         enabled INTEGER NOT NULL DEFAULT 1,
         created_at INTEGER NOT NULL,
@@ -114,12 +143,39 @@ async function initializeDatabase() {
         file_id TEXT UNIQUE NOT NULL,
         user_id TEXT NOT NULL,
         direct_name TEXT UNIQUE NOT NULL,
+        token TEXT UNIQUE NOT NULL,
         enabled INTEGER NOT NULL DEFAULT 1,
         access_count INTEGER NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         FOREIGN KEY (file_id) REFERENCES files (id) ON DELETE CASCADE,
         FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS direct_link_access_logs (
+        id TEXT PRIMARY KEY,
+        direct_link_id TEXT NOT NULL,
+        ip_address TEXT NOT NULL,
+        user_agent TEXT,
+        country TEXT,
+        province TEXT,
+        city TEXT,
+        isp TEXT,
+        accessed_at INTEGER NOT NULL,
+        FOREIGN KEY (direct_link_id) REFERENCES file_direct_links (id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS ip_bans (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        direct_link_id TEXT,
+        ip_address TEXT NOT NULL,
+        reason TEXT,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+        FOREIGN KEY (direct_link_id) REFERENCES file_direct_links (id) ON DELETE CASCADE
       );
 
       CREATE TABLE IF NOT EXISTS file_shares (
@@ -130,6 +186,9 @@ async function initializeDatabase() {
         pickup_code TEXT,
         require_login INTEGER NOT NULL DEFAULT 0,
         gatekeeper INTEGER NOT NULL DEFAULT 0,
+        custom_file_name TEXT,
+        custom_file_extension TEXT,
+        custom_file_size INTEGER,
         enabled INTEGER NOT NULL DEFAULT 1,
         access_count INTEGER NOT NULL DEFAULT 0,
         expires_at INTEGER,
@@ -192,6 +251,32 @@ async function initializeDatabase() {
       sqlite.exec('ALTER TABLE storage_config ADD COLUMN enable_mixed_mode INTEGER NOT NULL DEFAULT 0')
       logger.database('ALTER', 'storage_config')
       logger.info('enable_mixed_mode 字段添加成功')
+    }
+
+    // 检查并添加 OneDrive 相关字段到 storage_config 表
+    const hasOneDriveClientId = storageConfigColumns.some(col => col.name === 'onedrive_client_id')
+    const hasOneDriveClientSecret = storageConfigColumns.some(col => col.name === 'onedrive_client_secret')
+    const hasOneDriveTenantId = storageConfigColumns.some(col => col.name === 'onedrive_tenant_id')
+
+    if (!hasOneDriveClientId) {
+      logger.info('添加 onedrive_client_id 字段到 storage_config 表...')
+      sqlite.exec('ALTER TABLE storage_config ADD COLUMN onedrive_client_id TEXT')
+      logger.database('ALTER', 'storage_config')
+      logger.info('onedrive_client_id 字段添加成功')
+    }
+
+    if (!hasOneDriveClientSecret) {
+      logger.info('添加 onedrive_client_secret 字段到 storage_config 表...')
+      sqlite.exec('ALTER TABLE storage_config ADD COLUMN onedrive_client_secret TEXT')
+      logger.database('ALTER', 'storage_config')
+      logger.info('onedrive_client_secret 字段添加成功')
+    }
+
+    if (!hasOneDriveTenantId) {
+      logger.info('添加 onedrive_tenant_id 字段到 storage_config 表...')
+      sqlite.exec('ALTER TABLE storage_config ADD COLUMN onedrive_tenant_id TEXT')
+      logger.database('ALTER', 'storage_config')
+      logger.info('onedrive_tenant_id 字段添加成功')
     }
 
     // 检查并修复 email_verification_codes 表的 used 字段约束
@@ -281,6 +366,9 @@ async function initializeDatabase() {
       const hasEnabled = fileSharesColumns.some((col: any) => col.name === 'enabled')
       const hasAccessCount = fileSharesColumns.some((col: any) => col.name === 'access_count')
       const hasUpdatedAt = fileSharesColumns.some((col: any) => col.name === 'updated_at')
+      const hasCustomFileName = fileSharesColumns.some((col: any) => col.name === 'custom_file_name')
+      const hasCustomFileExtension = fileSharesColumns.some((col: any) => col.name === 'custom_file_extension')
+      const hasCustomFileSize = fileSharesColumns.some((col: any) => col.name === 'custom_file_size')
 
       if (!hasGatekeeper) {
         logger.info('添加 gatekeeper 字段到 file_shares 表...')
@@ -308,10 +396,31 @@ async function initializeDatabase() {
         sqlite.exec('ALTER TABLE file_shares ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0')
         logger.database('ALTER', 'file_shares')
         logger.info('updated_at 字段添加成功')
-        
+
         // 更新现有记录的 updated_at 字段
         sqlite.exec(`UPDATE file_shares SET updated_at = created_at WHERE updated_at = 0`)
         logger.info('已更新现有记录的 updated_at 字段')
+      }
+
+      if (!hasCustomFileName) {
+        logger.info('添加 custom_file_name 字段到 file_shares 表...')
+        sqlite.exec('ALTER TABLE file_shares ADD COLUMN custom_file_name TEXT')
+        logger.database('ALTER', 'file_shares')
+        logger.info('custom_file_name 字段添加成功')
+      }
+
+      if (!hasCustomFileExtension) {
+        logger.info('添加 custom_file_extension 字段到 file_shares 表...')
+        sqlite.exec('ALTER TABLE file_shares ADD COLUMN custom_file_extension TEXT')
+        logger.database('ALTER', 'file_shares')
+        logger.info('custom_file_extension 字段添加成功')
+      }
+
+      if (!hasCustomFileSize) {
+        logger.info('添加 custom_file_size 字段到 file_shares 表...')
+        sqlite.exec('ALTER TABLE file_shares ADD COLUMN custom_file_size INTEGER')
+        logger.database('ALTER', 'file_shares')
+        logger.info('custom_file_size 字段添加成功')
       }
 
       // 修复 share_token 字段的 UNIQUE 约束问题
@@ -351,6 +460,9 @@ async function initializeDatabase() {
       }
     }
 
+    // 检查并修复 file_direct_links 表结构
+    await fixFileDirectLinksTable()
+
     // 插入默认数据
     sqlite.exec(`
       INSERT OR IGNORE INTO storage_config (storage_type, updated_at)
@@ -389,6 +501,12 @@ async function initializeDatabase() {
 
     // 初始化用户配额系统
     await initializeQuotaSystem()
+
+    // 检查并修复 direct_link_access_logs 表结构
+    await fixDirectLinkAccessLogsTable()
+
+    // 检查并修复 ip_bans 表结构
+    await fixIPBansTable()
 
     // 验证所有表是否正确创建
     await validateDatabaseTables()
@@ -467,6 +585,319 @@ async function initializeQuotaSystem() {
   }
 }
 
+// 修复 file_direct_links 表结构
+async function fixFileDirectLinksTable() {
+  try {
+    logger.info('🔧 检查并修复 file_direct_links 表结构...')
+
+    // 检查表是否存在
+    const tableExists = sqlite.prepare(`
+      SELECT name FROM sqlite_master
+      WHERE type='table' AND name='file_direct_links'
+    `).get()
+
+    if (!tableExists) {
+      logger.info('file_direct_links 表不存在，重新创建...')
+      sqlite.exec(`
+        CREATE TABLE file_direct_links (
+          id TEXT PRIMARY KEY,
+          file_id TEXT UNIQUE NOT NULL,
+          user_id TEXT NOT NULL,
+          direct_name TEXT UNIQUE NOT NULL,
+          token TEXT UNIQUE NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          access_count INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          FOREIGN KEY (file_id) REFERENCES files (id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        );
+      `)
+      logger.database('CREATE', 'file_direct_links')
+      logger.info('file_direct_links 表创建成功')
+      return
+    }
+
+    // 检查表结构
+    const columns = sqlite.prepare("PRAGMA table_info(file_direct_links)").all()
+    const columnNames = columns.map(col => col.name)
+
+    const requiredColumns = [
+      'id', 'file_id', 'user_id', 'direct_name', 'token',
+      'enabled', 'access_count', 'created_at', 'updated_at'
+    ]
+
+    const missingColumns = requiredColumns.filter(col => !columnNames.includes(col))
+
+    if (missingColumns.length > 0) {
+      logger.info(`file_direct_links 表缺少字段: ${missingColumns.join(', ')}`)
+
+      // 特别处理 token 字段
+      if (missingColumns.includes('token')) {
+        logger.info('添加 token 字段到 file_direct_links 表...')
+
+        // 为现有记录生成token
+        const { nanoid } = await import('nanoid')
+        const existingLinks = sqlite.prepare("SELECT id FROM file_direct_links").all()
+
+        // 先添加字段
+        sqlite.exec('ALTER TABLE file_direct_links ADD COLUMN token TEXT')
+
+        // 为现有记录生成唯一token
+        for (const link of existingLinks) {
+          const token = nanoid(32)
+          sqlite.prepare("UPDATE file_direct_links SET token = ? WHERE id = ?").run(token, link.id)
+        }
+
+        logger.database('ALTER', 'file_direct_links')
+        logger.info('token 字段添加成功，已为现有记录生成token')
+      }
+
+      // 处理其他缺失字段
+      for (const column of missingColumns) {
+        if (column === 'token') continue // 已处理
+
+        let columnDef = ''
+        switch (column) {
+          case 'enabled':
+            columnDef = 'enabled INTEGER NOT NULL DEFAULT 1'
+            break
+          case 'access_count':
+            columnDef = 'access_count INTEGER NOT NULL DEFAULT 0'
+            break
+          case 'updated_at':
+            columnDef = 'updated_at INTEGER NOT NULL DEFAULT 0'
+            break
+          default:
+            continue
+        }
+
+        logger.info(`添加 ${column} 字段到 file_direct_links 表...`)
+        sqlite.exec(`ALTER TABLE file_direct_links ADD COLUMN ${columnDef}`)
+        logger.database('ALTER', 'file_direct_links')
+        logger.info(`${column} 字段添加成功`)
+      }
+
+      // 更新 updated_at 字段为 created_at 的值（如果为0）
+      if (missingColumns.includes('updated_at')) {
+        sqlite.exec(`UPDATE file_direct_links SET updated_at = created_at WHERE updated_at = 0`)
+        logger.info('已更新现有记录的 updated_at 字段')
+      }
+    } else {
+      logger.info('file_direct_links 表结构正确')
+    }
+
+  } catch (error) {
+    logger.error('修复 file_direct_links 表失败:', error)
+    throw error
+  }
+}
+
+// 修复 direct_link_access_logs 表结构
+async function fixDirectLinkAccessLogsTable() {
+  try {
+    logger.info('🔧 检查并修复 direct_link_access_logs 表结构...')
+
+    // 检查表是否存在
+    const tableExists = sqlite.prepare(`
+      SELECT name FROM sqlite_master
+      WHERE type='table' AND name='direct_link_access_logs'
+    `).get()
+
+    if (!tableExists) {
+      logger.info('direct_link_access_logs 表不存在，重新创建...')
+      sqlite.exec(`
+        CREATE TABLE direct_link_access_logs (
+          id TEXT PRIMARY KEY,
+          direct_link_id TEXT NOT NULL,
+          ip_address TEXT NOT NULL,
+          user_agent TEXT,
+          country TEXT,
+          province TEXT,
+          city TEXT,
+          isp TEXT,
+          accessed_at INTEGER NOT NULL,
+          FOREIGN KEY (direct_link_id) REFERENCES file_direct_links (id) ON DELETE CASCADE
+        );
+      `)
+      logger.database('CREATE', 'direct_link_access_logs')
+      logger.info('direct_link_access_logs 表创建成功')
+      return
+    }
+
+    // 检查表结构
+    const columns = sqlite.prepare("PRAGMA table_info(direct_link_access_logs)").all()
+    const columnNames = columns.map(col => col.name)
+
+    const requiredColumns = [
+      'id', 'direct_link_id', 'ip_address', 'user_agent',
+      'country', 'province', 'city', 'isp', 'accessed_at'
+    ]
+
+    const missingColumns = requiredColumns.filter(col => !columnNames.includes(col))
+
+    if (missingColumns.length > 0) {
+      logger.info(`direct_link_access_logs 表缺少字段: ${missingColumns.join(', ')}，重建表...`)
+
+      // 备份现有数据
+      const existingData = sqlite.prepare("SELECT * FROM direct_link_access_logs").all()
+
+      // 删除旧表
+      sqlite.exec("DROP TABLE direct_link_access_logs")
+
+      // 重新创建表
+      sqlite.exec(`
+        CREATE TABLE direct_link_access_logs (
+          id TEXT PRIMARY KEY,
+          direct_link_id TEXT NOT NULL,
+          ip_address TEXT NOT NULL,
+          user_agent TEXT,
+          country TEXT,
+          province TEXT,
+          city TEXT,
+          isp TEXT,
+          accessed_at INTEGER NOT NULL,
+          FOREIGN KEY (direct_link_id) REFERENCES file_direct_links (id) ON DELETE CASCADE
+        );
+      `)
+
+      // 恢复数据（只恢复兼容的字段）
+      for (const row of existingData) {
+        try {
+          sqlite.prepare(`
+            INSERT INTO direct_link_access_logs
+            (id, direct_link_id, ip_address, user_agent, country, province, city, isp, accessed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            row.id || `log_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            row.direct_link_id,
+            row.ip_address,
+            row.user_agent || null,
+            row.country || null,
+            row.province || null,
+            row.city || null,
+            row.isp || null,
+            row.accessed_at || Date.now()
+          )
+        } catch (error) {
+          logger.warn(`恢复访问日志记录失败: ${error.message}`)
+        }
+      }
+
+      logger.database('REBUILD', 'direct_link_access_logs')
+      logger.info('direct_link_access_logs 表重建完成')
+    } else {
+      logger.info('direct_link_access_logs 表结构正确')
+    }
+
+  } catch (error) {
+    logger.error('修复 direct_link_access_logs 表失败:', error)
+    throw error
+  }
+}
+
+// 修复 ip_bans 表结构
+async function fixIPBansTable() {
+  try {
+    logger.info('🔧 检查并修复 ip_bans 表结构...')
+
+    // 检查表是否存在
+    const tableExists = sqlite.prepare(`
+      SELECT name FROM sqlite_master
+      WHERE type='table' AND name='ip_bans'
+    `).get()
+
+    if (!tableExists) {
+      logger.info('ip_bans 表不存在，重新创建...')
+      sqlite.exec(`
+        CREATE TABLE ip_bans (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          direct_link_id TEXT,
+          ip_address TEXT NOT NULL,
+          reason TEXT,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+          FOREIGN KEY (direct_link_id) REFERENCES file_direct_links (id) ON DELETE CASCADE
+        );
+      `)
+      logger.database('CREATE', 'ip_bans')
+      logger.info('ip_bans 表创建成功')
+      return
+    }
+
+    // 检查表结构
+    const columns = sqlite.prepare("PRAGMA table_info(ip_bans)").all()
+    const columnNames = columns.map(col => col.name)
+
+    const requiredColumns = [
+      'id', 'user_id', 'direct_link_id', 'ip_address',
+      'reason', 'enabled', 'created_at', 'updated_at'
+    ]
+
+    const missingColumns = requiredColumns.filter(col => !columnNames.includes(col))
+
+    if (missingColumns.length > 0) {
+      logger.info(`ip_bans 表缺少字段: ${missingColumns.join(', ')}，重建表...`)
+
+      // 备份现有数据
+      const existingData = sqlite.prepare("SELECT * FROM ip_bans").all()
+
+      // 删除旧表
+      sqlite.exec("DROP TABLE ip_bans")
+
+      // 重新创建表
+      sqlite.exec(`
+        CREATE TABLE ip_bans (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          direct_link_id TEXT,
+          ip_address TEXT NOT NULL,
+          reason TEXT,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+          FOREIGN KEY (direct_link_id) REFERENCES file_direct_links (id) ON DELETE CASCADE
+        );
+      `)
+
+      // 恢复数据（只恢复兼容的字段）
+      for (const row of existingData) {
+        try {
+          sqlite.prepare(`
+            INSERT INTO ip_bans
+            (id, user_id, direct_link_id, ip_address, reason, enabled, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            row.id || `ban_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            row.user_id,
+            row.direct_link_id || null,
+            row.ip_address,
+            row.reason || null,
+            row.enabled !== undefined ? row.enabled : 1,
+            row.created_at || Date.now(),
+            row.updated_at || Date.now()
+          )
+        } catch (error) {
+          logger.warn(`恢复IP封禁记录失败: ${error.message}`)
+        }
+      }
+
+      logger.database('REBUILD', 'ip_bans')
+      logger.info('ip_bans 表重建完成')
+    } else {
+      logger.info('ip_bans 表结构正确')
+    }
+
+  } catch (error) {
+    logger.error('修复 ip_bans 表失败:', error)
+    throw error
+  }
+}
+
 // 验证数据库表是否正确创建
 async function validateDatabaseTables() {
   try {
@@ -479,10 +910,14 @@ async function validateDatabaseTables() {
       'files',
       'storage_config',
       'r2_mount_points',
+      'onedrive_auth',
+      'onedrive_mount_points',
       'email_verification_codes',
       'smtp_config',
       'download_tokens',
       'file_direct_links',
+      'direct_link_access_logs',
+      'ip_bans',
       'file_shares',
       'user_quotas',
       'role_quota_config'

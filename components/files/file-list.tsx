@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { FilePreview } from "./file-preview"
 import {
   AlertDialog,
@@ -32,6 +33,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   File as FileIcon,
   Folder,
@@ -66,6 +74,9 @@ interface FileItem {
   isR2Folder?: boolean
   r2Key?: string
   r2Path?: string
+  isOneDriveFile?: boolean
+  isOneDriveFolder?: boolean
+  oneDrivePath?: string
   lastModified?: string
   etag?: string
   mountPointId?: string
@@ -78,7 +89,7 @@ interface FileListProps {
 }
 
 export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListProps & {
-  onFolderNavigate?: (folderId: string | null, isR2Folder?: boolean, r2Path?: string, mountPointId?: string) => void
+  onFolderNavigate?: (folderId: string | null, isR2Folder?: boolean, r2Path?: string, mountPointId?: string, isOneDriveFolder?: boolean, oneDrivePath?: string) => void
 }) {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [directLinkDialog, setDirectLinkDialog] = useState<{
@@ -106,6 +117,9 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
     shareUrl: string
     pickupCode: string | null
     gatekeeper: boolean
+    customFileName: string
+    customFileExtension: string
+    customFileSize: string
   }>({
     open: false,
     fileId: "",
@@ -117,6 +131,9 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
     shareUrl: "",
     pickupCode: null,
     gatekeeper: false,
+    customFileName: "",
+    customFileExtension: "",
+    customFileSize: "",
   })
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -267,6 +284,9 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
       shareUrl: "",
       pickupCode: null,
       gatekeeper: false,
+      customFileName: "",
+      customFileExtension: "",
+      customFileSize: "",
     })
   }
 
@@ -287,6 +307,10 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
           usePickupCode: shareDialog.usePickupCode,
           expiresAt: shareDialog.expiresAt ? shareDialog.expiresAt.getTime() : null,
           gatekeeper: shareDialog.gatekeeper,
+          customFileName: shareDialog.gatekeeper ? shareDialog.customFileName : undefined,
+          customFileExtension: shareDialog.gatekeeper ? shareDialog.customFileExtension : undefined,
+          customFileSize: shareDialog.gatekeeper && shareDialog.customFileSize ?
+            Math.round(parseFloat(shareDialog.customFileSize) * 1024 * 1024) : undefined,
         }),
       })
 
@@ -352,6 +376,9 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
     if (file.isR2Folder) {
       // 导航到 R2 文件夹
       onFolderNavigate(null, true, file.r2Path, file.mountPointId);
+    } else if (file.isOneDriveFolder) {
+      // 导航到 OneDrive 文件夹
+      onFolderNavigate(null, false, undefined, file.mountPointId, true, file.oneDrivePath);
     } else if (file.mimeType === "application/directory") {
       // 导航到本地文件夹
       onFolderNavigate(file.id, false);
@@ -439,6 +466,12 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
                         R2 {file.isR2Folder ? "目录" : ""}
                       </Badge>
                     )}
+                    {(file.isOneDriveFile || file.isOneDriveFolder) && (
+                      <Badge variant="secondary" className="text-xs flex items-center gap-1 bg-blue-100 text-blue-800">
+                        <Cloud className="h-3 w-3" />
+                        OneDrive {file.isOneDriveFolder ? "目录" : ""}
+                      </Badge>
+                    )}
                   </div>
                   <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
                     <span>
@@ -455,7 +488,7 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
                       }
                     </div>
                     <div className="flex items-center gap-1">
-                      {file.isR2File ? (
+                      {file.isR2File || file.isOneDriveFile ? (
                         <Cloud className="h-3 w-3" />
                       ) : (
                         <HardDrive className="h-3 w-3" />
@@ -631,22 +664,101 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
                     <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">BETA</span>
                   </label>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    id="gatekeeper"
-                    checked={shareDialog.gatekeeper}
-                    onChange={(e) => setShareDialog(prev => ({
-                      ...prev,
-                      gatekeeper: e.target.checked
-                    }))}
-                    className="rounded"
-                  />
-                  <label htmlFor="gatekeeper" className="text-sm font-medium flex items-center gap-2">
-                    <Eye className="h-4 w-4" />
-                    守门模式
-                    <span className="bg-orange-100 text-orange-800 text-xs px-2 py-1 rounded-full">NEW</span>
-                  </label>
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="gatekeeper"
+                      checked={shareDialog.gatekeeper}
+                      onChange={(e) => setShareDialog(prev => ({
+                        ...prev,
+                        gatekeeper: e.target.checked,
+                        // 清空自定义信息当禁用守门模式时
+                        customFileName: e.target.checked ? prev.customFileName : "",
+                        customFileExtension: e.target.checked ? prev.customFileExtension : "",
+                        customFileSize: e.target.checked ? prev.customFileSize : "",
+                      }))}
+                      className="rounded"
+                    />
+                    <label htmlFor="gatekeeper" className="text-sm font-medium flex items-center gap-2">
+                      <Eye className="h-4 w-4" />
+                      守门模式
+                      <span className="bg-orange-100 text-orange-800 text-xs px-2 py-1 rounded-full">NEW</span>
+                    </label>
+                  </div>
+
+                  {shareDialog.gatekeeper && (
+                    <div className="ml-6 space-y-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                      <p className="text-sm text-orange-800 font-medium">自定义文件信息</p>
+                      <p className="text-xs text-orange-700">在守门模式下，您可以自定义访问者看到的文件信息</p>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="customFileName" className="text-sm">自定义文件名</Label>
+                        <Input
+                          id="customFileName"
+                          placeholder={`原文件名: ${shareDialog.fileName}`}
+                          value={shareDialog.customFileName}
+                          onChange={(e) => setShareDialog(prev => ({
+                            ...prev,
+                            customFileName: e.target.value
+                          }))}
+                          className="text-sm"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="customFileExtension" className="text-sm">自定义文件扩展名</Label>
+                        <Select
+                          value={shareDialog.customFileExtension || "original"}
+                          onValueChange={(value) => setShareDialog(prev => ({
+                            ...prev,
+                            customFileExtension: value === "original" ? "" : value
+                          }))}
+                        >
+                          <SelectTrigger className="text-sm">
+                            <SelectValue placeholder="选择扩展名或保持原样" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="original">保持原扩展名</SelectItem>
+                            <SelectItem value="pdf">PDF 文档 (.pdf)</SelectItem>
+                            <SelectItem value="doc">Word 文档 (.doc)</SelectItem>
+                            <SelectItem value="docx">Word 文档 (.docx)</SelectItem>
+                            <SelectItem value="xls">Excel 表格 (.xls)</SelectItem>
+                            <SelectItem value="xlsx">Excel 表格 (.xlsx)</SelectItem>
+                            <SelectItem value="ppt">PowerPoint (.ppt)</SelectItem>
+                            <SelectItem value="pptx">PowerPoint (.pptx)</SelectItem>
+                            <SelectItem value="txt">文本文件 (.txt)</SelectItem>
+                            <SelectItem value="jpg">图片 (.jpg)</SelectItem>
+                            <SelectItem value="png">图片 (.png)</SelectItem>
+                            <SelectItem value="mp4">视频 (.mp4)</SelectItem>
+                            <SelectItem value="mp3">音频 (.mp3)</SelectItem>
+                            <SelectItem value="zip">压缩包 (.zip)</SelectItem>
+                            <SelectItem value="rar">压缩包 (.rar)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="customFileSize" className="text-sm">自定义文件大小 (MB)</Label>
+                        <Input
+                          id="customFileSize"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="留空保持原大小"
+                          value={shareDialog.customFileSize}
+                          onChange={(e) => setShareDialog(prev => ({
+                            ...prev,
+                            customFileSize: e.target.value
+                          }))}
+                          className="text-sm"
+                        />
+                        <p className="text-xs text-orange-600">
+                          提示: 支持小数，如 1.5 表示 1.5MB
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium flex items-center gap-2">
@@ -670,7 +782,7 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
                     <strong>分享方式说明：</strong><br/>
                     • <strong>分享链接</strong>：生成链接，任何人都可通过链接访问<br/>
                     • <strong>取件码</strong>：生成6位数字取件码，需要在取件页面输入取件码<br/>
-                    • <strong>守门模式</strong>：只允许查看文件信息，禁止下载文件内容
+                    • <strong>守门模式</strong>：只允许查看文件信息，禁止下载文件内容。可自定义显示的文件名、扩展名和大小
                   </p>
                 </div>
               </div>

@@ -1,9 +1,20 @@
 import { Elysia } from "elysia"
+import { nanoid } from "nanoid"
 import { db } from "../db"
-import { files, storageConfig, downloadTokens, fileDirectLinks } from "../db/schema"
+import { files, storageConfig, downloadTokens, fileDirectLinks, directLinkAccessLogs } from "../db/schema"
 import { eq } from "drizzle-orm"
 import { StorageService } from "../services/storage"
+import { IPLocationService } from "../services/ip-location"
+import { IPBanService } from "../services/ip-ban"
 import { logger } from "../utils/logger"
+
+// 辅助函数：获取客户端IP地址
+function getClientIP(headers: Record<string, string | undefined>): string {
+  return headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+         headers['x-real-ip'] ||
+         headers['cf-connecting-ip'] ||
+         '127.0.0.1'
+}
 
 export const downloadRoutes = new Elysia({ prefix: "/files" })
   // 实际文件下载路由（使用一次性令牌，无需认证）
@@ -117,7 +128,7 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
     }
   })
   // 文件直链访问路由（无需认证，可多次使用）
-  .get("/direct/:filename", async ({ params, set }) => {
+  .get("/direct/:filename", async ({ params, set, headers }) => {
     try {
       logger.debug(`使用直链访问文件: ${params.filename}`)
 
@@ -141,6 +152,16 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
         return { error: "Direct link disabled" }
       }
 
+      // 检查IP是否被封禁
+      const clientIP = getClientIP(headers)
+      const isIPBanned = await IPBanService.isIPBanned(clientIP, linkRecord.id)
+
+      if (isIPBanned) {
+        logger.warn(`IP已被封禁，拒绝访问: ${clientIP} - 直链: ${params.filename}`)
+        set.status = 403
+        return { error: "Access denied: IP banned" }
+      }
+
       // 获取文件信息
       const file = await db
         .select()
@@ -153,6 +174,30 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
         set.status = 404
         return { error: "File not found" }
       }
+
+      // 记录访问日志
+      const userAgent = headers['user-agent'] || ''
+
+      // 异步查询IP归属地信息
+      IPLocationService.getIPLocation(clientIP).then(async (locationInfo) => {
+        try {
+          await db.insert(directLinkAccessLogs).values({
+            id: nanoid(),
+            directLinkId: linkRecord.id,
+            ipAddress: clientIP,
+            userAgent: userAgent,
+            country: locationInfo?.country || '',
+            province: locationInfo?.province || '',
+            city: locationInfo?.city || '',
+            isp: locationInfo?.isp || '',
+            accessedAt: Date.now(),
+          })
+        } catch (error) {
+          logger.error('记录直链访问日志失败:', error)
+        }
+      }).catch(error => {
+        logger.error('查询IP归属地失败:', error)
+      })
 
       // 增加访问计数
       await db

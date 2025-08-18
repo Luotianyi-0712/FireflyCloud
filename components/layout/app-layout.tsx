@@ -46,6 +46,8 @@ export function AppLayout({ children }: AppLayoutProps) {
         label = "取件码"
       } else if (segment === "shares") {
         label = "我的分享"
+      } else if (segment === "direct-links") {
+        label = "直链管理"
       }
 
       const isActive = index === segments.length - 1

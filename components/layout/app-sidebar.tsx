@@ -36,6 +36,7 @@ import {
   Database,
   Hash,
   Share2,
+  Link as LinkIcon,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -51,6 +52,12 @@ const navigationItems = [
     url: "/shares",
     icon: Share2,
     description: "管理您的分享文件",
+  },
+  {
+    title: "直链管理",
+    url: "/direct-links",
+    icon: LinkIcon,
+    description: "管理您的文件直链",
   },
   {
     title: "取件码",

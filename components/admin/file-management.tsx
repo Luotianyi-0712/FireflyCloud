@@ -16,7 +16,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Trash2, Calendar, HardDrive, User } from "lucide-react"
+import { Trash2, Calendar, HardDrive, User, File as FileIcon } from "lucide-react"
 import { getFileIcon } from "@/lib/file-icons"
 
 interface FileItem {
@@ -122,7 +122,7 @@ export function FileManagement({ onFileDeleted }: FileManagementProps) {
   if (files.length === 0) {
     return (
       <div className="text-center py-8">
-        <File className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+        <FileIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
         <h3 className="text-lg font-medium mb-2">未找到文件</h3>
         <p className="text-muted-foreground">系统中没有上传的文件</p>
       </div>

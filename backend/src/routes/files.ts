@@ -463,6 +463,7 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
 
         // 创建新的直链
         const linkId = nanoid()
+        const token = nanoid(32)
         const now = Date.now()
 
         await db.insert(fileDirectLinks).values({
@@ -470,6 +471,7 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
           fileId: file.id,
           userId: user.userId,
           directName: directName,
+          token: token,
           enabled: true,
           accessCount: 0,
           createdAt: now,
@@ -481,6 +483,7 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
           fileId: file.id,
           userId: user.userId,
           directName: directName,
+          token: token,
           enabled: true,
           accessCount: 0,
           createdAt: now,
@@ -490,9 +493,9 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
         logger.info(`创建文件直链: ${file.originalName} -> ${directName} - 用户: ${user.userId}`)
       }
 
-      // 自动获取域名生成直链URL
+      // 自动获取域名生成直链URL - 使用新格式
       const baseUrl = getBaseUrl(headers)
-      const directUrl = `${baseUrl}/files/direct/${directLink.directName}`
+      const directUrl = `${baseUrl}/dl/${directLink.directName}?token=${directLink.token}`
 
       return {
         directUrl,
@@ -559,11 +562,22 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
         return { error: "File not found" }
       }
 
-      const { requireLogin, usePickupCode, expiresAt, gatekeeper } = body as {
+      const {
+        requireLogin,
+        usePickupCode,
+        expiresAt,
+        gatekeeper,
+        customFileName,
+        customFileExtension,
+        customFileSize
+      } = body as {
         requireLogin: boolean
         usePickupCode: boolean
         expiresAt: number | null
         gatekeeper?: boolean
+        customFileName?: string
+        customFileExtension?: string
+        customFileSize?: number
       }
 
       const shareId = nanoid()
@@ -586,6 +600,9 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
           createdAt: now,
           updatedAt: now,
           gatekeeper: gatekeeper || false,
+          customFileName: gatekeeper ? customFileName : null,
+          customFileExtension: gatekeeper ? customFileExtension : null,
+          customFileSize: gatekeeper ? customFileSize : null,
         })
 
         logger.info(`创建文件取件码: ${file.originalName} - 用户: ${user.userId} - 取件码: ${pickupCode}`)
@@ -614,6 +631,9 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
           createdAt: now,
           updatedAt: now,
           gatekeeper: gatekeeper || false,
+          customFileName: gatekeeper ? customFileName : null,
+          customFileExtension: gatekeeper ? customFileExtension : null,
+          customFileSize: gatekeeper ? customFileSize : null,
         })
 
         // 自动获取前端域名生成分享URL
@@ -656,6 +676,9 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
           createdAt: fileShares.createdAt,
           updatedAt: fileShares.updatedAt,
           gatekeeper: fileShares.gatekeeper,
+          customFileName: fileShares.customFileName,
+          customFileExtension: fileShares.customFileExtension,
+          customFileSize: fileShares.customFileSize,
           fileName: files.originalName,
           fileSize: files.size,
           fileMimeType: files.mimeType,

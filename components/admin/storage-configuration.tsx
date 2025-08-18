@@ -8,33 +8,43 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+
 import { Checkbox } from "@/components/ui/checkbox"
 import { Separator } from "@/components/ui/separator"
-import { HardDrive, Cloud, Save, CheckCircle, AlertCircle, Link } from "lucide-react"
+import { HardDrive, Cloud, Save, CheckCircle, AlertCircle, Clock } from "lucide-react"
 import { toast } from "sonner"
 
 interface StorageConfig {
-  storageType: "local" | "r2"
+  enableLocal: boolean
+  enableR2: boolean
+  enableOneDrive: boolean
   r2Endpoint: string
   r2Bucket: string
-  enableMixedMode: boolean
+  oneDriveClientId: string
+  oneDriveTenantId: string
 }
 
 export function StorageConfiguration() {
   const [config, setConfig] = useState<StorageConfig>({
-    storageType: "local",
+    enableLocal: true,
+    enableR2: false,
+    enableOneDrive: false,
     r2Endpoint: "",
     r2Bucket: "",
-    enableMixedMode: false,
+    oneDriveClientId: "",
+    oneDriveTenantId: "",
   })
   const [formData, setFormData] = useState({
-    storageType: "local",
+    enableLocal: true,
+    enableR2: false,
+    enableOneDrive: false,
     r2Endpoint: "",
     r2AccessKey: "",
     r2SecretKey: "",
     r2Bucket: "",
-    enableMixedMode: false,
+    oneDriveClientId: "",
+    oneDriveClientSecret: "",
+    oneDriveTenantId: "",
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -58,14 +68,31 @@ export function StorageConfiguration() {
 
       if (response.ok) {
         const data = await response.json()
-        setConfig(data.config)
-        setFormData({
-          storageType: data.config.storageType,
+
+        // 将后端的旧格式转换为前端的新格式
+        const convertedConfig = {
+          enableLocal: data.config.enableMixedMode || data.config.storageType === "local",
+          enableR2: data.config.enableMixedMode || data.config.storageType === "r2",
+          // OneDrive 暂时禁用
+          enableOneDrive: false,
           r2Endpoint: data.config.r2Endpoint || "",
+          r2Bucket: data.config.r2Bucket || "",
+          oneDriveClientId: data.config.oneDriveClientId || "",
+          oneDriveTenantId: data.config.oneDriveTenantId || "",
+        }
+
+        setConfig(convertedConfig)
+        setFormData({
+          enableLocal: convertedConfig.enableLocal,
+          enableR2: convertedConfig.enableR2,
+          enableOneDrive: false, // 强制禁用 OneDrive
+          r2Endpoint: convertedConfig.r2Endpoint,
           r2AccessKey: "",
           r2SecretKey: "",
-          r2Bucket: data.config.r2Bucket || "",
-          enableMixedMode: data.config.enableMixedMode || false,
+          r2Bucket: convertedConfig.r2Bucket,
+          oneDriveClientId: convertedConfig.oneDriveClientId,
+          oneDriveClientSecret: "",
+          oneDriveTenantId: convertedConfig.oneDriveTenantId,
         })
       }
     } catch (error) {
@@ -78,17 +105,45 @@ export function StorageConfiguration() {
   const handleSave = async () => {
     if (!token) return
 
+    // 验证至少选择一个存储后端（OneDrive 暂时禁用）
+    const enabledCount = (formData.enableLocal ? 1 : 0) +
+                        (formData.enableR2 ? 1 : 0)
+
+    if (enabledCount === 0) {
+      toast.error("配置错误", {
+        description: "请至少选择一个存储后端"
+      })
+      return
+    }
+
     setSaving(true)
-    setMessage(null)
 
     try {
+      // 转换新的复选框格式为后端期望的格式
+
+      const backendData = {
+        // 确定主要存储类型（后端只支持 local 和 r2）
+        storageType: formData.enableLocal ? "local" :
+                    formData.enableR2 ? "r2" : "local",
+        // 如果启用了多个存储则启用混合模式（OneDrive 暂时禁用）
+        enableMixedMode: enabledCount > 1,
+        r2Endpoint: formData.r2Endpoint,
+        r2AccessKey: formData.r2AccessKey,
+        r2SecretKey: formData.r2SecretKey,
+        r2Bucket: formData.r2Bucket,
+        // OneDrive 配置暂时清空
+        oneDriveClientId: "",
+        oneDriveClientSecret: "",
+        oneDriveTenantId: "",
+      }
+
       const response = await fetch(`${API_URL}/storage/config`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(backendData),
       })
 
       if (response.ok) {
@@ -129,16 +184,30 @@ export function StorageConfiguration() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             当前存储后端
-            <Badge variant={config.storageType === "local" ? "secondary" : "default"}>
-              {config.storageType === "local" ? "本地存储" : "Cloudflare R2"}
-            </Badge>
+            <div className="flex gap-2">
+              {config.enableLocal && <Badge variant="secondary">本地存储</Badge>}
+              {config.enableR2 && <Badge variant="default">Cloudflare R2</Badge>}
+              {config.enableOneDrive && <Badge variant="default">OneDrive</Badge>}
+              {!config.enableLocal && !config.enableR2 && !config.enableOneDrive && (
+                <Badge variant="destructive">未配置</Badge>
+              )}
+            </div>
           </CardTitle>
           <CardDescription>
-            {config.enableMixedMode
-              ? "混合模式：同时支持本地存储和 Cloudflare R2"
-              : config.storageType === "local"
-              ? "文件存储在服务器本地文件系统中"
-              : `文件存储在 Cloudflare R2 存储桶：${config.r2Bucket}`}
+            {(() => {
+              const enabledStorages = []
+              if (config.enableLocal) enabledStorages.push("本地存储")
+              if (config.enableR2) enabledStorages.push(`Cloudflare R2${config.r2Bucket ? ` (${config.r2Bucket})` : ""}`)
+              if (config.enableOneDrive) enabledStorages.push("OneDrive")
+
+              if (enabledStorages.length === 0) {
+                return "未配置任何存储后端"
+              } else if (enabledStorages.length === 1) {
+                return `文件存储在：${enabledStorages[0]}`
+              } else {
+                return `多存储模式：${enabledStorages.join("、")}`
+              }
+            })()}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -150,44 +219,53 @@ export function StorageConfiguration() {
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-4">
-            <Label className="text-base font-medium">存储类型</Label>
-            <RadioGroup value={formData.storageType} onValueChange={(value) => handleInputChange("storageType", value)}>
+            <Label className="text-base font-medium">存储策略</Label>
+            <p className="text-sm text-muted-foreground">选择一个或多个存储后端，支持同时使用多种存储方式。OneDrive 功能正在开发中，敬请期待。</p>
+
+            <div className="space-y-3">
               <div className="flex items-center space-x-2">
-                <RadioGroupItem value="local" id="local" />
-                <Label htmlFor="local" className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  id="enableLocal"
+                  checked={formData.enableLocal}
+                  onCheckedChange={(checked) => handleInputChange("enableLocal", checked)}
+                />
+                <Label htmlFor="enableLocal" className="flex items-center gap-2 cursor-pointer">
                   <HardDrive className="h-4 w-4" />
                   本地存储
                 </Label>
               </div>
+
               <div className="flex items-center space-x-2">
-                <RadioGroupItem value="r2" id="r2" />
-                <Label htmlFor="r2" className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  id="enableR2"
+                  checked={formData.enableR2}
+                  onCheckedChange={(checked) => handleInputChange("enableR2", checked)}
+                />
+                <Label htmlFor="enableR2" className="flex items-center gap-2 cursor-pointer">
                   <Cloud className="h-4 w-4" />
                   Cloudflare R2
                 </Label>
               </div>
-            </RadioGroup>
-          </div>
 
-          {/* 混合模式选项 */}
-          <div className="space-y-4">
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="enableMixedMode"
-                checked={formData.enableMixedMode}
-                onCheckedChange={(checked) => handleInputChange("enableMixedMode", checked)}
-              />
-              <Label htmlFor="enableMixedMode" className="flex items-center gap-2 cursor-pointer">
-                <Link className="h-4 w-4" />
-                启用混合模式
-              </Label>
+              <div className="flex items-center space-x-2 opacity-50">
+                <Checkbox
+                  id="enableOneDrive"
+                  checked={false}
+                  disabled={true}
+                />
+                <Label htmlFor="enableOneDrive" className="flex items-center gap-2 cursor-not-allowed">
+                  <Cloud className="h-4 w-4" />
+                  OneDrive
+                  <Badge variant="outline" className="ml-2 text-xs">
+                    <Clock className="h-3 w-3 mr-1" />
+                    敬请期待
+                  </Badge>
+                </Label>
+              </div>
             </div>
-            <p className="text-sm text-muted-foreground ml-6">
-              同时支持本地存储和 Cloudflare R2，可以将 R2 存储桶挂载到本地文件夹中
-            </p>
           </div>
 
-          {formData.storageType === "local" && (
+          {formData.enableLocal && (
             <Card className="bg-muted/50">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-2">
@@ -201,7 +279,7 @@ export function StorageConfiguration() {
             </Card>
           )}
 
-          {(formData.storageType === "r2" || formData.enableMixedMode) && (
+          {formData.enableR2 && (
             <>
               <Separator />
               <div className="space-y-4">
@@ -264,6 +342,62 @@ export function StorageConfiguration() {
             </>
           )}
 
+          {formData.enableOneDrive && (
+            <>
+              <Separator />
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Cloud className="h-5 w-5 text-blue-600" />
+                  <h3 className="text-lg font-medium">OneDrive 配置</h3>
+                </div>
+
+                <div className="grid gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="oneDriveClientId">应用程序 ID (Client ID)</Label>
+                    <Input
+                      id="oneDriveClientId"
+                      value={formData.oneDriveClientId}
+                      onChange={(e) => handleInputChange("oneDriveClientId", e.target.value)}
+                      placeholder="输入 Azure 应用程序 ID"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="oneDriveClientSecret">客户端密钥 (Client Secret)</Label>
+                    <Input
+                      id="oneDriveClientSecret"
+                      type="password"
+                      value={formData.oneDriveClientSecret}
+                      onChange={(e) => handleInputChange("oneDriveClientSecret", e.target.value)}
+                      placeholder="输入客户端密钥"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="oneDriveTenantId">租户 ID (Tenant ID)</Label>
+                    <Input
+                      id="oneDriveTenantId"
+                      value={formData.oneDriveTenantId}
+                      onChange={(e) => handleInputChange("oneDriveTenantId", e.target.value)}
+                      placeholder="输入租户 ID 或使用 'common'"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      使用 'common' 支持个人和工作账户，或输入特定的租户 ID
+                    </p>
+                  </div>
+                </div>
+
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    请确保在 Azure 门户中正确配置了应用程序权限，包括 Files.ReadWrite.All 权限，
+                    并设置了正确的重定向 URI。
+                  </AlertDescription>
+                </Alert>
+              </div>
+            </>
+          )}
+
           <div className="flex justify-end pt-4">
             <Button onClick={handleSave} disabled={saving} className="flex items-center gap-2">
               <Save className="h-4 w-4" />
@@ -293,6 +427,16 @@ export function StorageConfiguration() {
               <p className="font-medium">R2 设置</p>
               <p className="text-muted-foreground">
                 对于 Cloudflare R2，请创建具有 R2:Edit 权限的 API 令牌，并为您的存储桶配置适当的 CORS 设置。
+              </p>
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <Clock className="h-4 w-4 text-orange-500 mt-0.5" />
+            <div className="text-sm">
+              <p className="font-medium">OneDrive 功能</p>
+              <p className="text-muted-foreground">
+                OneDrive 存储功能正在开发中，将支持与 Microsoft OneDrive 的无缝集成。
+                敬请期待后续版本更新。
               </p>
             </div>
           </div>

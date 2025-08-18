@@ -49,6 +49,10 @@ export const storageConfig = sqliteTable("storage_config", {
   r2AccessKey: text("r2_access_key"),
   r2SecretKey: text("r2_secret_key"),
   r2Bucket: text("r2_bucket"),
+  // OneDrive 配置字段
+  oneDriveClientId: text("onedrive_client_id"),
+  oneDriveClientSecret: text("onedrive_client_secret"),
+  oneDriveTenantId: text("onedrive_tenant_id"),
   // 新增字段支持混合模式
   enableMixedMode: integer("enable_mixed_mode", { mode: "boolean" }).notNull().default(false),
   updatedAt: integer("updated_at").notNull(),
@@ -60,6 +64,31 @@ export const r2MountPoints = sqliteTable("r2_mount_points", {
   userId: text("user_id").notNull(),
   folderId: text("folder_id").notNull(), // 挂载到的本地文件夹
   r2Path: text("r2_path").notNull(), // R2 存储桶中的路径
+  mountName: text("mount_name").notNull(), // 挂载点显示名称
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+})
+
+// OneDrive 用户认证表
+export const oneDriveAuth = sqliteTable("onedrive_auth", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  accessToken: text("access_token").notNull(),
+  refreshToken: text("refresh_token").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+  scope: text("scope").notNull(),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+})
+
+// OneDrive 挂载点表
+export const oneDriveMountPoints = sqliteTable("onedrive_mount_points", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  folderId: text("folder_id").notNull().references(() => folders.id, { onDelete: "cascade" }),
+  oneDrivePath: text("onedrive_path").notNull(), // OneDrive 中的路径
+  oneDriveItemId: text("onedrive_item_id"), // OneDrive 文件夹的唯一ID
   mountName: text("mount_name").notNull(), // 挂载点显示名称
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
   createdAt: integer("created_at").notNull(),
@@ -95,8 +124,34 @@ export const fileDirectLinks = sqliteTable("file_direct_links", {
   fileId: text("file_id").notNull().unique(), // 一个文件只能有一个直链
   userId: text("user_id").notNull(),
   directName: text("direct_name").notNull().unique(), // 直链使用的文件名
+  token: text("token").notNull().unique(), // 直链访问令牌
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
   accessCount: integer("access_count").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+})
+
+// 直链访问日志表
+export const directLinkAccessLogs = sqliteTable("direct_link_access_logs", {
+  id: text("id").primaryKey(),
+  directLinkId: text("direct_link_id").notNull(),
+  ipAddress: text("ip_address").notNull(),
+  userAgent: text("user_agent"),
+  country: text("country"),
+  province: text("province"),
+  city: text("city"),
+  isp: text("isp"),
+  accessedAt: integer("accessed_at").notNull(),
+})
+
+// IP封禁表
+export const ipBans = sqliteTable("ip_bans", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(), // 执行封禁的用户ID
+  directLinkId: text("direct_link_id"), // 关联的直链ID，如果为null则为全局封禁
+  ipAddress: text("ip_address").notNull(),
+  reason: text("reason"), // 封禁原因
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true), // 是否启用封禁
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 })
@@ -109,6 +164,10 @@ export const fileShares = sqliteTable("file_shares", {
   pickupCode: text("pickup_code"), // 取件码，可选
   requireLogin: integer("require_login", { mode: "boolean" }).notNull().default(false),
   gatekeeper: integer("gatekeeper", { mode: "boolean" }).notNull().default(false), // 守门模式：只显示文件详情，禁用下载
+  // 守门模式自定义文件信息
+  customFileName: text("custom_file_name"), // 自定义文件名
+  customFileExtension: text("custom_file_extension"), // 自定义文件扩展名
+  customFileSize: integer("custom_file_size"), // 自定义文件大小（字节）
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
   accessCount: integer("access_count").notNull().default(0),
   expiresAt: integer("expires_at"), // 过期时间，可选

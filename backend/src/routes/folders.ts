@@ -3,10 +3,11 @@ import { jwt } from "@elysiajs/jwt"
 import { bearer } from "@elysiajs/bearer"
 import { nanoid } from "nanoid"
 import { db } from "../db"
-import { folders, files, r2MountPoints, storageConfig } from "../db/schema"
+import { folders, files, r2MountPoints, oneDriveMountPoints, oneDriveAuth, storageConfig } from "../db/schema"
 import { eq, and, like, isNull } from "drizzle-orm"
 import { logger } from "../utils/logger"
 import { StorageService } from "../services/storage"
+import { OneDriveService } from "../services/onedrive"
 
 export const folderRoutes = new Elysia({ prefix: "/folders" })
   .use(
@@ -468,5 +469,158 @@ export const folderRoutes = new Elysia({ prefix: "/folders" })
       logger.error("获取 R2 挂载内容失败:", error)
       set.status = 500
       return { error: "Failed to get R2 mount contents" }
+    }
+  })
+
+  // 获取文件夹的 OneDrive 挂载内容
+  .get("/:id/onedrive-contents", async ({ params, user, set, query }) => {
+    const { oneDrivePath } = query as { oneDrivePath?: string };
+    try {
+      const folderId = params.id
+
+      logger.debug(`获取文件夹 OneDrive 挂载内容: ${folderId} - 用户: ${user.userId}`)
+
+      // 检查文件夹是否有 OneDrive 挂载点
+      const mountPoint = await db
+        .select()
+        .from(oneDriveMountPoints)
+        .where(
+          and(
+            eq(oneDriveMountPoints.folderId, folderId),
+            eq(oneDriveMountPoints.userId, user.userId),
+            eq(oneDriveMountPoints.enabled, true)
+          )
+        )
+        .get()
+
+      if (!mountPoint) {
+        set.status = 404
+        return { error: "No OneDrive mount point found for this folder" }
+      }
+
+      // 获取用户的OneDrive认证信息
+      const auth = await db
+        .select()
+        .from(oneDriveAuth)
+        .where(eq(oneDriveAuth.userId, user.userId))
+        .get()
+
+      if (!auth) {
+        set.status = 400
+        return { error: "OneDrive not authenticated" }
+      }
+
+      // 检查访问令牌是否过期
+      if (auth.expiresAt <= Date.now()) {
+        // 尝试刷新令牌
+        const config = await db.select().from(storageConfig).get()
+        if (!config || !config.oneDriveClientId) {
+          set.status = 400
+          return { error: "OneDrive not configured" }
+        }
+
+        const oneDriveService = new OneDriveService({
+          clientId: config.oneDriveClientId,
+          clientSecret: config.oneDriveClientSecret || "",
+          tenantId: config.oneDriveTenantId || "common",
+        })
+
+        try {
+          const newTokens = await oneDriveService.refreshToken(auth.refreshToken)
+
+          // 更新数据库中的令牌
+          await db
+            .update(oneDriveAuth)
+            .set({
+              accessToken: newTokens.accessToken,
+              refreshToken: newTokens.refreshToken,
+              expiresAt: newTokens.expiresAt,
+              updatedAt: Date.now(),
+            })
+            .where(eq(oneDriveAuth.id, auth.id))
+
+          auth.accessToken = newTokens.accessToken
+          logger.info("OneDrive访问令牌已刷新")
+        } catch (refreshError) {
+          logger.error("刷新OneDrive访问令牌失败:", refreshError)
+          set.status = 401
+          return { error: "OneDrive authentication expired, please re-authenticate" }
+        }
+      }
+
+      // 获取存储配置
+      const config = await db.select().from(storageConfig).get()
+      if (!config || !config.oneDriveClientId) {
+        set.status = 400
+        return { error: "OneDrive not configured" }
+      }
+
+      const oneDriveService = new OneDriveService({
+        clientId: config.oneDriveClientId,
+        clientSecret: config.oneDriveClientSecret || "",
+        tenantId: config.oneDriveTenantId || "common",
+      })
+
+      oneDriveService.setAccessToken(auth.accessToken)
+
+      // 确定要列出的路径
+      const targetPath = oneDrivePath || mountPoint.oneDrivePath
+
+      let items: any[] = []
+
+      if (mountPoint.oneDriveItemId && targetPath === mountPoint.oneDrivePath) {
+        // 如果有itemId且是挂载点根路径，使用itemId获取内容
+        items = await oneDriveService.listItemsById(mountPoint.oneDriveItemId)
+      } else {
+        // 否则使用路径获取内容
+        items = await oneDriveService.listItems(targetPath)
+      }
+
+      // 分离文件和文件夹
+      const oneDriveFolders = items
+        .filter(item => item.folder)
+        .map(item => ({
+          id: item.id,
+          name: item.name,
+          path: targetPath === "/" ? `/${item.name}` : `${targetPath}/${item.name}`,
+          mountPointId: mountPoint.id,
+          itemCount: item.folder?.childCount || 0,
+          createdAt: new Date(item.createdDateTime).getTime(),
+          lastModified: new Date(item.lastModifiedDateTime).getTime(),
+        }))
+
+      const oneDriveFiles = items
+        .filter(item => item.file)
+        .map(item => ({
+          id: item.id,
+          userId: user.userId,
+          folderId: folderId,
+          filename: item.name,
+          originalName: item.name,
+          size: item.size || 0,
+          mimeType: item.file?.mimeType || "application/octet-stream",
+          storageType: "onedrive",
+          storagePath: item.id, // 使用OneDrive的itemId作为存储路径
+          createdAt: new Date(item.createdDateTime).getTime(),
+          lastModified: new Date(item.lastModifiedDateTime).getTime(),
+          downloadUrl: item.downloadUrl,
+        }))
+
+      logger.info(`文件夹 ${folderId} OneDrive 挂载内容: ${oneDriveFolders.length} 个文件夹, ${oneDriveFiles.length} 个文件`)
+
+      return {
+        folders: oneDriveFolders,
+        files: oneDriveFiles,
+        mountPoint: {
+          id: mountPoint.id,
+          oneDrivePath: targetPath,
+          mountName: mountPoint.mountName,
+          originalMountPath: mountPoint.oneDrivePath,
+        }
+      }
+    } catch (error) {
+      logger.error("获取 OneDrive 挂载内容失败:", error)
+      set.status = 500
+      return { error: "Failed to get OneDrive mount contents" }
     }
   })
