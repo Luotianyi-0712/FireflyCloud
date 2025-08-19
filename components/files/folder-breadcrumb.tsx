@@ -10,7 +10,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
-import { Home, Folder } from "lucide-react"
+import { Home, Folder, Cloud } from "lucide-react"
 
 interface FolderItem {
   id: string
@@ -19,12 +19,22 @@ interface FolderItem {
   path: string
 }
 
+interface R2MountInfo {
+  id: string
+  mountName: string
+  r2Path: string
+  folderId: string
+  currentR2Path?: string
+}
+
 interface FolderBreadcrumbProps {
   currentFolderId: string | null
   onFolderSelect: (folderId: string | null) => void
+  r2MountInfo?: R2MountInfo | null
+  onR2Navigate?: (r2Path: string) => void
 }
 
-export function FolderBreadcrumb({ currentFolderId, onFolderSelect }: FolderBreadcrumbProps) {
+export function FolderBreadcrumb({ currentFolderId, onFolderSelect, r2MountInfo, onR2Navigate }: FolderBreadcrumbProps) {
   const [breadcrumbPath, setBreadcrumbPath] = useState<FolderItem[]>([])
   const [loading, setLoading] = useState(false)
   const { token } = useAuth()
@@ -80,6 +90,36 @@ export function FolderBreadcrumb({ currentFolderId, onFolderSelect }: FolderBrea
     return path
   }
 
+  // 解析R2路径为面包屑段
+  const parseR2Path = (r2Path: string, mountR2Path: string): string[] => {
+    if (!r2Path) return []
+
+    // 如果当前R2路径与挂载点路径相同，返回空数组（表示在挂载点根目录）
+    if (r2Path === mountR2Path) return []
+
+    // 计算相对于挂载点的路径
+    let relativePath = r2Path
+    if (mountR2Path && r2Path.startsWith(mountR2Path)) {
+      relativePath = r2Path.substring(mountR2Path.length)
+      // 移除开头的斜杠
+      if (relativePath.startsWith('/')) {
+        relativePath = relativePath.substring(1)
+      }
+    }
+
+    // 分割路径并过滤空字符串
+    return relativePath.split('/').filter(Boolean)
+  }
+
+  // 构建R2路径（从挂载点到指定段）
+  const buildR2Path = (mountR2Path: string, segments: string[], endIndex: number): string => {
+    const pathSegments = segments.slice(0, endIndex + 1)
+    if (mountR2Path) {
+      return mountR2Path + (pathSegments.length > 0 ? '/' + pathSegments.join('/') : '')
+    }
+    return pathSegments.join('/')
+  }
+
   if (loading) {
     return (
       <div className="flex items-center space-x-2">
@@ -111,7 +151,7 @@ export function FolderBreadcrumb({ currentFolderId, onFolderSelect }: FolderBrea
           <div key={folder.id} className="flex items-center">
             <BreadcrumbSeparator />
             <BreadcrumbItem>
-              {index === breadcrumbPath.length - 1 ? (
+              {index === breadcrumbPath.length - 1 && !r2MountInfo ? (
                 <BreadcrumbPage className="flex items-center gap-1">
                   <Folder className="h-4 w-4" />
                   {folder.name}
@@ -132,6 +172,61 @@ export function FolderBreadcrumb({ currentFolderId, onFolderSelect }: FolderBrea
             </BreadcrumbItem>
           </div>
         ))}
+
+        {/* R2挂载点显示 */}
+        {r2MountInfo && (
+          <>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbLink
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault()
+                  if (onR2Navigate) {
+                    onR2Navigate(r2MountInfo.r2Path)
+                  }
+                }}
+                className="flex items-center gap-1 text-purple-600"
+              >
+                <Cloud className="h-4 w-4" />
+                {r2MountInfo.mountName}
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+
+            {/* R2内部路径 */}
+            {(() => {
+              const r2PathSegments = parseR2Path(r2MountInfo.currentR2Path || r2MountInfo.r2Path, r2MountInfo.r2Path)
+              return r2PathSegments.map((segment, index) => (
+                <div key={`r2-${index}`} className="flex items-center">
+                  <BreadcrumbSeparator />
+                  <BreadcrumbItem>
+                    {index === r2PathSegments.length - 1 ? (
+                      <BreadcrumbPage className="flex items-center gap-1 text-purple-600">
+                        <Folder className="h-4 w-4" />
+                        {segment}
+                      </BreadcrumbPage>
+                    ) : (
+                      <BreadcrumbLink
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          if (onR2Navigate) {
+                            const targetPath = buildR2Path(r2MountInfo.r2Path, r2PathSegments, index)
+                            onR2Navigate(targetPath)
+                          }
+                        }}
+                        className="flex items-center gap-1 text-purple-600"
+                      >
+                        <Folder className="h-4 w-4" />
+                        {segment}
+                      </BreadcrumbLink>
+                    )}
+                  </BreadcrumbItem>
+                </div>
+              ))
+            })()}
+          </>
+        )}
       </BreadcrumbList>
     </Breadcrumb>
   )

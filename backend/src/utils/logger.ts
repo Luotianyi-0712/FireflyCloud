@@ -1,6 +1,82 @@
 /**
- * 简化的日志系统 - 专注于HTTP请求日志
+ * 简化的日志系统 - 专注于HTTP请求日志，支持WebSocket实时广播
  */
+
+// WebSocket 连接管理
+interface LogWebSocketConnection {
+  id: string
+  ws: any
+  isAlive: boolean
+}
+
+let wsConnections: Map<string, LogWebSocketConnection> = new Map()
+
+// 日志历史记录
+const logHistory: any[] = []
+const MAX_LOG_HISTORY = 100
+
+// 添加日志到历史记录
+function addToLogHistory(logData: any) {
+  logHistory.push(logData)
+  if (logHistory.length > MAX_LOG_HISTORY) {
+    logHistory.shift() // 移除最旧的日志
+  }
+}
+
+// 获取最近的日志
+export function getRecentLogs(count: number = 10): any[] {
+  return logHistory.slice(-count)
+}
+
+// 添加WebSocket连接
+export function addLogWebSocketConnection(id: string, ws: any) {
+  wsConnections.set(id, { id, ws, isAlive: true })
+  console.log(`📡 日志WebSocket连接已建立: ${id}`)
+
+  // 发送最近的10条日志
+  const recentLogs = getRecentLogs(10)
+  if (recentLogs.length > 0) {
+    try {
+      ws.send(JSON.stringify({
+        type: "history",
+        logs: recentLogs,
+        timestamp: Date.now()
+      }))
+    } catch (error) {
+      console.error("发送历史日志失败:", error)
+    }
+  }
+}
+
+// 移除WebSocket连接
+export function removeLogWebSocketConnection(id: string) {
+  wsConnections.delete(id)
+  console.log(`📡 日志WebSocket连接已断开: ${id}`)
+}
+
+// 广播日志到所有WebSocket连接
+function broadcastLogToWebSocket(logData: any) {
+  if (wsConnections.size === 0) return
+
+  const deadConnections: string[] = []
+
+  wsConnections.forEach((connection, id) => {
+    try {
+      if (connection.ws.readyState === 1) { // WebSocket.OPEN
+        connection.ws.send(JSON.stringify(logData))
+      } else {
+        deadConnections.push(id)
+      }
+    } catch (error) {
+      deadConnections.push(id)
+    }
+  })
+
+  // 清理死连接
+  deadConnections.forEach(id => {
+    wsConnections.delete(id)
+  })
+}
 
 // ANSI 颜色代码
 const colors = {
@@ -204,6 +280,7 @@ class Logger {
     const levelName = levelConfig.name.padEnd(5)
 
     let logMessage = ''
+    let plainMessage = ''
 
     if (this.config.enableColors) {
       const timestampStr = timestamp ? `${colors.dim}[${timestamp}]${colors.reset} ` : ''
@@ -216,12 +293,31 @@ class Logger {
       logMessage = `${timestampStr}${levelName} ${iconStr}${message}`
     }
 
+    // 创建不带颜色的纯文本消息用于WebSocket传输
+    const timestampStr = timestamp ? `[${timestamp}] ` : ''
+    const iconStr = icon ? `${icon} ` : ''
+    plainMessage = `${timestampStr}${levelName} ${iconStr}${message}`
+
     // 根据日志级别选择输出方法
     if (level >= LogLevel.ERROR) {
       console.error(logMessage, ...args)
     } else {
       console.log(logMessage, ...args)
     }
+
+    // 广播到WebSocket客户端
+    const logData = {
+      timestamp: Date.now(),
+      level: levelConfig.name,
+      levelNumber: level,
+      icon: icon,
+      message: message,
+      args: args,
+      plainMessage: plainMessage,
+      formattedTimestamp: timestamp
+    }
+
+    broadcastLogToWebSocket(logData)
   }
 
   // 公共日志方法
@@ -277,6 +373,9 @@ class Logger {
     const levelConfig = logLevelConfig[LogLevel.INFO]
     const levelName = levelConfig.name.padEnd(5)
 
+    let logMessage = ''
+    let plainMessage = ''
+
     if (this.config.enableColors) {
       // 使用与原有log方法相同的颜色格式，但去除ℹ️符号
       const timestampStr = timestamp ? `${colors.dim}[${timestamp}]${colors.reset} ` : ''
@@ -291,17 +390,40 @@ class Logger {
 
       // 使用更清晰的分隔符和间距
       const httpContent = `${statusStr} ${methodStr} ${pathStr} ${durationStr} ${ipStr}`
-      const httpLogFormat = `${timestampStr}${levelStr} ${httpContent}`
-      console.log(httpLogFormat)
+      logMessage = `${timestampStr}${levelStr} ${httpContent}`
+      console.log(logMessage)
     } else {
       const timestampStr = timestamp ? `[${timestamp}] ` : ''
       const statusPadded = statusCode.toString().padStart(3)
       const methodPadded = method.padEnd(7)
       const durationPadded = formattedDuration.padStart(8)
       const httpContent = `${statusPadded} ${methodPadded} ${path} ${durationPadded} ${ip}`
-      const simpleFormat = `${timestampStr}${levelName} ${httpContent}`
-      console.log(simpleFormat)
+      logMessage = `${timestampStr}${levelName} ${httpContent}`
+      console.log(logMessage)
     }
+
+    // 创建不带颜色的纯文本消息用于WebSocket传输
+    const timestampStr = timestamp ? `[${timestamp}] ` : ''
+    const statusPadded = statusCode.toString().padStart(3)
+    const methodPadded = method.padEnd(7)
+    const durationPadded = formattedDuration.padStart(8)
+    const httpContent = `${statusPadded} ${methodPadded} ${path} ${durationPadded} ${ip}`
+    plainMessage = `${timestampStr}${levelName} ${httpContent}`
+
+    // 广播到WebSocket客户端
+    const logData = {
+      timestamp: Date.now(),
+      level: levelConfig.name,
+      levelNumber: LogLevel.INFO,
+      icon: '',
+      message: httpContent,
+      args: [],
+      plainMessage: plainMessage,
+      formattedTimestamp: timestamp,
+      isHttpLog: true
+    }
+
+    broadcastLogToWebSocket(logData)
   }
 
   // 详细HTTP请求日志（用于调试）

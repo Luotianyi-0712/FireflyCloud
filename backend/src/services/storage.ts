@@ -29,14 +29,24 @@ export class StorageService {
     this.config = config
 
     if ((config.storageType === "r2" || config.enableMixedMode) && config.r2Endpoint) {
+      logger.debug(`初始化R2客户端 - Endpoint: ${config.r2Endpoint}, Bucket: ${config.r2Bucket}`)
+
+      if (!config.r2AccessKey || !config.r2SecretKey) {
+        logger.error("R2 Access Key 或 Secret Key 未配置")
+        throw new Error("R2 credentials not configured")
+      }
+
       this.s3Client = new S3Client({
-        region: "auto",
+        region: "auto", // Cloudflare R2 使用 "auto" 作为 region
         endpoint: config.r2Endpoint,
         credentials: {
           accessKeyId: config.r2AccessKey,
           secretAccessKey: config.r2SecretKey,
         },
+        forcePathStyle: true, // 强制使用路径样式，有助于避免某些签名问题
       })
+
+      logger.info("R2客户端初始化成功")
     }
 
     if ((config.storageType === "onedrive" || config.enableMixedMode) && config.oneDriveClientId) {
@@ -72,22 +82,122 @@ export class StorageService {
     }
   }
 
-  private async uploadToR2(file: File, filename: string): Promise<string> {
+  // 新增：上传文件到R2挂载点
+  async uploadFileToR2Mount(file: File, filename: string, r2Path: string, targetFolderId: string, currentFolderId: string): Promise<string> {
     if (!this.s3Client) throw new Error("R2 client not configured")
 
-    logger.debug(`上传文件到 R2: ${filename}`)
+    // 计算相对路径
+    let relativePath = ""
+    if (currentFolderId !== targetFolderId) {
+      // 这里需要计算从挂载点到当前文件夹的相对路径
+      // 暂时简化处理，后续可以优化
+      relativePath = await this.calculateRelativePath(targetFolderId, currentFolderId)
+    }
+
+    // 构建完整的R2路径
+    const fullR2Path = r2Path ?
+      (relativePath ? `${r2Path}/${relativePath}/${filename}` : `${r2Path}/${filename}`) :
+      (relativePath ? `${relativePath}/${filename}` : filename)
+
+    logger.debug(`上传文件到 R2 挂载点: ${fullR2Path}`)
     const buffer = await file.arrayBuffer()
 
     const command = new PutObjectCommand({
       Bucket: this.config.r2Bucket,
-      Key: filename,
+      Key: fullR2Path,
       Body: new Uint8Array(buffer),
       ContentType: file.type,
     })
 
     await this.s3Client.send(command)
-    logger.info(`文件成功上传到 R2: ${filename}`)
-    return filename
+    logger.info(`文件成功上传到 R2 挂载点: ${fullR2Path}`)
+    return fullR2Path
+  }
+
+  // 计算从挂载点到目标文件夹的相对路径
+  private async calculateRelativePath(mountFolderId: string, targetFolderId: string): Promise<string> {
+    if (mountFolderId === targetFolderId) {
+      return ""
+    }
+
+    // 需要导入数据库相关模块来查询文件夹路径
+    // 这里暂时返回空字符串，后续需要实现完整的路径计算
+    // TODO: 实现完整的文件夹路径计算逻辑
+    return ""
+  }
+
+  private async uploadToR2(file: File, filename: string): Promise<string> {
+    if (!this.s3Client) throw new Error("R2 client not configured")
+
+    // 清理文件名
+    const cleanFilename = this.sanitizeR2Path(filename)
+
+    logger.debug(`上传文件到 R2: ${cleanFilename}`)
+
+    try {
+      const buffer = await file.arrayBuffer()
+
+      const command = new PutObjectCommand({
+        Bucket: this.config.r2Bucket,
+        Key: cleanFilename,
+        Body: new Uint8Array(buffer),
+        ContentType: file.type || 'application/octet-stream',
+      })
+
+      await this.s3Client.send(command)
+      logger.info(`文件成功上传到 R2: ${cleanFilename}`)
+      return cleanFilename
+    } catch (error) {
+      logger.error(`R2上传失败 - Filename: ${cleanFilename}, Error:`, error)
+      throw error
+    }
+  }
+
+  // 新增：直接上传到R2指定路径
+  async uploadToR2Direct(file: File, r2Path: string): Promise<string> {
+    if (!this.s3Client) throw new Error("R2 client not configured")
+
+    // 验证R2配置
+    if (!this.config.r2Bucket) {
+      throw new Error("R2 bucket not configured")
+    }
+    if (!this.config.r2AccessKey || !this.config.r2SecretKey) {
+      throw new Error("R2 credentials not configured")
+    }
+
+    // 清理和编码文件路径，避免特殊字符导致签名问题
+    const cleanPath = this.sanitizeR2Path(r2Path)
+
+    logger.debug(`直接上传文件到 R2: ${cleanPath}`)
+    logger.debug(`R2 配置 - Bucket: ${this.config.r2Bucket}, Endpoint: ${this.config.r2Endpoint}`)
+
+    try {
+      const buffer = await file.arrayBuffer()
+
+      const command = new PutObjectCommand({
+        Bucket: this.config.r2Bucket,
+        Key: cleanPath,
+        Body: new Uint8Array(buffer),
+        ContentType: file.type || 'application/octet-stream',
+      })
+
+      await this.s3Client.send(command)
+      logger.info(`文件成功直接上传到 R2: ${cleanPath}`)
+      return cleanPath
+    } catch (error) {
+      logger.error(`R2上传失败 - Path: ${cleanPath}, Error:`, error)
+      throw error
+    }
+  }
+
+  // 清理R2路径，避免特殊字符
+  private sanitizeR2Path(path: string): string {
+    // 移除或替换可能导致问题的字符
+    return path
+      .replace(/[^\w\-_.\/\u4e00-\u9fff]/g, '_') // 保留中文字符，替换其他特殊字符
+      .replace(/\/+/g, '/') // 合并多个斜杠
+      .replace(/^\//, '') // 移除开头的斜杠
+      .replace(/\/$/, '') // 移除结尾的斜杠（除非是目录）
   }
 
   private async uploadToLocal(file: File, filename: string): Promise<string> {

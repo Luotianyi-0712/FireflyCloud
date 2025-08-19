@@ -3,7 +3,7 @@ import { jwt } from "@elysiajs/jwt"
 import { bearer } from "@elysiajs/bearer"
 import { nanoid } from "nanoid"
 import { db } from "../db"
-import { files, storageConfig, folders, downloadTokens, fileDirectLinks, fileShares } from "../db/schema"
+import { files, storageConfig, folders, downloadTokens, fileDirectLinks, fileShares, r2MountPoints } from "../db/schema"
 import { eq, and, isNull } from "drizzle-orm"
 import { StorageService } from "../services/storage"
 import { QuotaService } from "../services/quota"
@@ -11,6 +11,42 @@ import { logger } from "../utils/logger"
 import { getBaseUrl, getFrontendUrl } from "../utils/url"
 import * as fs from "fs"
 import * as path from "path"
+
+// 计算从挂载点文件夹到目标文件夹的相对路径
+async function calculateFolderRelativePath(mountFolderId: string, targetFolderId: string): Promise<string> {
+  if (mountFolderId === targetFolderId) {
+    return ""
+  }
+
+  // 获取目标文件夹的完整路径
+  const targetFolder = await db
+    .select({ path: folders.path })
+    .from(folders)
+    .where(eq(folders.id, targetFolderId))
+    .get()
+
+  // 获取挂载点文件夹的完整路径
+  const mountFolder = await db
+    .select({ path: folders.path })
+    .from(folders)
+    .where(eq(folders.id, mountFolderId))
+    .get()
+
+  if (!targetFolder || !mountFolder) {
+    return ""
+  }
+
+  // 计算相对路径
+  const mountPath = mountFolder.path
+  const targetPath = targetFolder.path
+
+  if (targetPath.startsWith(mountPath + "/")) {
+    // 目标文件夹是挂载点的子文件夹
+    return targetPath.substring(mountPath.length + 1)
+  }
+
+  return ""
+}
 
 export const fileRoutes = new Elysia({ prefix: "/files" })
   .use(
@@ -58,7 +94,7 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
     "/upload",
     async ({ body, user, set }) => {
       try {
-        const { file, folderId } = body
+        const { file, folderId, currentR2Path } = body
 
         if (!file || !(file instanceof File)) {
           logger.warn(`文件上传失败: 用户 ${user.userId} 未提供文件`)
@@ -91,6 +127,45 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
           return { error: "Storage not configured" }
         }
 
+        // 检查目标文件夹是否有R2挂载点
+        let targetStorageType = config.storageType
+        let r2MountPoint: any = null
+        let targetFolderId = folderId
+
+        if (folderId) {
+          // 检查当前文件夹及其父文件夹是否有R2挂载点
+          let currentFolderId: string | null | undefined = folderId
+          while (currentFolderId) {
+            const mountPoint = await db
+              .select()
+              .from(r2MountPoints)
+              .where(
+                and(
+                  eq(r2MountPoints.folderId, currentFolderId),
+                  eq(r2MountPoints.userId, user.userId),
+                  eq(r2MountPoints.enabled, true)
+                )
+              )
+              .get()
+
+            if (mountPoint) {
+              r2MountPoint = mountPoint
+              targetStorageType = "r2"
+              logger.info(`发现R2挂载点: ${mountPoint.mountName} -> ${mountPoint.r2Path}`)
+              break
+            }
+
+            // 获取父文件夹ID
+            const parentFolder = await db
+              .select({ parentId: folders.parentId })
+              .from(folders)
+              .where(eq(folders.id, currentFolderId))
+              .get()
+
+            currentFolderId = parentFolder?.parentId
+          }
+        }
+
         // 检查用户配额
         const quotaCheck = await QuotaService.checkUserQuota(user.userId, file.size)
         if (!quotaCheck.allowed) {
@@ -111,8 +186,32 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
         const fileId = nanoid()
         const filename = `${fileId}-${file.name}`
 
-        // Upload file
-        const storagePath = await storageService.uploadFile(file, filename)
+        // Upload file - 根据是否有R2挂载点选择上传方式
+        let storagePath: string
+        if (targetStorageType === "r2" && r2MountPoint) {
+          // 使用传入的currentR2Path或挂载点路径
+          let targetR2Path = currentR2Path || r2MountPoint.r2Path
+
+          // 构建完整的R2路径
+          const fullR2Path = targetR2Path ?
+            `${targetR2Path}/${filename}` :
+            filename
+
+          // 直接上传到R2
+          const r2Config = {
+            ...config,
+            storageType: "r2" as const
+          }
+          const r2StorageService = new StorageService(r2Config)
+
+          // 使用修改后的文件名包含路径
+          storagePath = await r2StorageService.uploadToR2Direct(file, fullR2Path)
+          logger.info(`文件上传到R2挂载点: ${r2MountPoint.mountName} -> ${fullR2Path}`)
+          logger.info(`当前R2路径: ${currentR2Path || '未指定，使用挂载点路径'}`)
+        } else {
+          // 使用默认存储
+          storagePath = await storageService.uploadFile(file, filename)
+        }
         logger.file('UPLOAD', file.name, file.size, true)
 
         // 更新用户存储使用量
@@ -127,7 +226,7 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
           originalName: file.name,
           size: file.size,
           mimeType: file.type,
-          storageType: config.storageType,
+          storageType: targetStorageType, // 使用实际的存储类型
           storagePath,
           createdAt: Date.now(),
         })
@@ -156,6 +255,7 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
       body: t.Object({
         file: t.File(),
         folderId: t.Optional(t.String()),
+        currentR2Path: t.Optional(t.String()),
       }),
     },
   )

@@ -232,6 +232,59 @@ export function FileManager() {
     setRefreshTrigger((prev) => prev + 1)
   }
 
+  // 处理R2路径导航
+  const handleR2Navigate = (r2Path: string) => {
+    if (!r2MountInfo) return
+
+    setLoading(true)
+
+    // 调用R2文件夹导航API
+    fetch(`${API_URL}/folders/r2?folderId=${selectedFolderId}&r2Path=${encodeURIComponent(r2Path)}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+      .then(response => response.json())
+      .then(data => {
+        // 更新文件列表，包括文件和文件夹
+        let allFiles: FileItem[] = []
+
+        // 添加R2文件
+        allFiles = [...allFiles, ...(data.files || [])]
+
+        // 将R2文件夹转换为条目
+        const r2FolderItems = (data.folders || []).map((folder: any) => ({
+          id: folder.id,
+          filename: folder.name,
+          originalName: folder.name,
+          size: 0,
+          mimeType: "application/directory",
+          storageType: "r2",
+          createdAt: Date.now(),
+          isR2Folder: true,
+          r2Path: folder.path,
+          mountPointId: folder.mountPointId,
+          itemCount: folder.itemCount || 0
+        }))
+
+        allFiles = [...allFiles, ...r2FolderItems]
+
+        // 更新文件列表和R2挂载信息
+        setFiles(allFiles)
+        setR2MountInfo({
+          ...data.mountPoint,
+          currentR2Path: r2Path
+        })
+        setLoading(false)
+      })
+      .catch(error => {
+        console.error("Failed to navigate to R2 path:", error)
+        setLoading(false)
+        // 刷新整个列表作为回退方案
+        setRefreshTrigger(prev => prev + 1)
+      })
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -281,6 +334,8 @@ export function FileManager() {
                           <FolderBreadcrumb
                             currentFolderId={selectedFolderId}
                             onFolderSelect={handleFolderSelect}
+                            r2MountInfo={r2MountInfo}
+                            onR2Navigate={handleR2Navigate}
                           />
                           {r2MountInfo && (
                             <div className="flex items-center gap-2 text-sm">
@@ -329,6 +384,7 @@ export function FileManager() {
                   <FileUpload
                     onUploadSuccess={handleUploadSuccess}
                     currentFolderId={selectedFolderId}
+                    r2MountInfo={r2MountInfo}
                   />
                 </CardContent>
               </Card>

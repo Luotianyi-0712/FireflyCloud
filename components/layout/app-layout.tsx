@@ -42,6 +42,8 @@ export function AppLayout({ children }: AppLayoutProps) {
       // 中文路径映射
       if (segment === "admin") {
         label = "管理面板"
+      } else if (segment === "logs") {
+        label = "运行日志"
       } else if (segment === "pickup") {
         label = "取件码"
       } else if (segment === "shares") {

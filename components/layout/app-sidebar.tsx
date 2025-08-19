@@ -37,6 +37,7 @@ import {
   Hash,
   Share2,
   Link as LinkIcon,
+  Terminal,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -73,6 +74,12 @@ const adminItems = [
     url: "/admin",
     icon: Settings,
     description: "系统管理",
+  },
+  {
+    title: "运行日志",
+    url: "/admin/logs",
+    icon: Terminal,
+    description: "查看系统实时运行日志",
   },
   {
     title: "数据库管理",

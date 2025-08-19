@@ -9,9 +9,18 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Upload, X, File as FileIcon, CheckCircle } from "lucide-react"
 import { useDropzone } from "react-dropzone"
 
+interface R2MountInfo {
+  id: string
+  mountName: string
+  r2Path: string
+  folderId: string
+  currentR2Path?: string
+}
+
 interface FileUploadProps {
   onUploadSuccess: () => void
   currentFolderId?: string | null
+  r2MountInfo?: R2MountInfo | null
 }
 
 interface UploadFile {
@@ -21,7 +30,7 @@ interface UploadFile {
   error?: string
 }
 
-export function FileUpload({ onUploadSuccess, currentFolderId }: FileUploadProps) {
+export function FileUpload({ onUploadSuccess, currentFolderId, r2MountInfo }: FileUploadProps) {
   const [uploadFiles, setUploadFiles] = useState<UploadFile[]>([])
   const [error, setError] = useState("")
   const { token } = useAuth()
@@ -61,6 +70,11 @@ export function FileUpload({ onUploadSuccess, currentFolderId }: FileUploadProps
       // 添加文件夹ID到表单数据
       if (currentFolderId) {
         formData.append("folderId", currentFolderId)
+      }
+
+      // 添加当前R2路径到表单数据
+      if (r2MountInfo?.currentR2Path) {
+        formData.append("currentR2Path", r2MountInfo.currentR2Path)
       }
 
       const response = await fetch(`${API_URL}/files/upload`, {
