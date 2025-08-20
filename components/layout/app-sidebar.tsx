@@ -76,6 +76,12 @@ const adminItems = [
     description: "系统管理",
   },
   {
+    title: "挂载管理",
+    url: "/mounts",
+    icon: HardDrive,
+    description: "管理存储挂载点",
+  },
+  {
     title: "运行日志",
     url: "/admin/logs",
     icon: Terminal,

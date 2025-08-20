@@ -12,10 +12,8 @@ import { UserManagement } from "./user-management"
 import { FileManagement } from "./file-management"
 import { StorageConfiguration } from "./storage-configuration"
 import { SmtpConfiguration } from "./smtp-configuration"
-import { R2MountManagement } from "./r2-mount-management"
 import { QuotaManagement } from "./quota-management"
 import { AdminSettings } from "./admin-settings"
-import { OneDriveMountManagement } from "./onedrive-mount-management"
 
 export function AdminDashboard() {
   const [stats, setStats] = useState<any>(null)
@@ -54,18 +52,6 @@ export function AdminDashboard() {
       label: "存储设置",
       icon: Settings,
       description: "配置存储相关设置"
-    },
-    {
-      value: "r2-mounts",
-      label: "R2挂载",
-      icon: Cloud,
-      description: "管理所有用户的 Cloudflare R2 存储桶挂载点"
-    },
-    {
-      value: "onedrive-mounts",
-      label: "OneDrive挂载",
-      icon: Cloud,
-      description: "管理当前账户的 OneDrive 挂载点"
     },
     {
       value: "smtp",
@@ -222,30 +208,6 @@ export function AdminDashboard() {
 
         <TabsContent value="storage" className="space-y-4 animate-in fade-in-50 duration-300">
           {isTabLoaded("storage") && <StorageConfiguration />}
-        </TabsContent>
-
-        <TabsContent value="r2-mounts" className="space-y-4 animate-in fade-in-50 duration-300">
-          <Card>
-            <CardHeader>
-              <CardTitle>R2 挂载点管理</CardTitle>
-              <CardDescription>管理所有用户的 Cloudflare R2 存储桶挂载点</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {isTabLoaded("r2-mounts") && <R2MountManagement />}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="onedrive-mounts" className="space-y-4 animate-in fade-in-50 duration-300">
-          <Card>
-            <CardHeader>
-              <CardTitle>OneDrive 挂载点管理</CardTitle>
-              <CardDescription>管理当前账户的 OneDrive 挂载点</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {isTabLoaded("onedrive-mounts") && <OneDriveMountManagement />}
-            </CardContent>
-          </Card>
         </TabsContent>
 
         <TabsContent value="smtp" className="space-y-4 animate-in fade-in-50 duration-300">
