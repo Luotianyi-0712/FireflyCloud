@@ -59,7 +59,7 @@ export class OneDriveService {
       client_id: this.config.clientId,
       response_type: "code",
       redirect_uri: redirectUri,
-      scope: "Files.ReadWrite.All offline_access",
+      scope: "Files.ReadWrite User.Read offline_access",
       response_mode: "query",
     })
 
@@ -177,12 +177,27 @@ export class OneDriveService {
   async getDriveInfo(): Promise<any> {
     try {
       logger.debug("获取OneDrive驱动器信息")
+      
+      // 添加详细的请求信息日志
+      const authHeader = this.httpClient.defaults.headers.common["Authorization"]
+      logger.debug(`请求头Authorization: ${authHeader ? authHeader.toString().substring(0, 20) + '...' : '未设置'}`)
+      
       const response = await this.httpClient.get("/me/drive")
       logger.info("OneDrive驱动器信息获取成功")
       return response.data
-    } catch (error) {
-      logger.error("获取OneDrive驱动器信息失败:", error)
-      throw new Error("Failed to get OneDrive drive info")
+    } catch (error: any) {
+      logger.error("获取OneDrive驱动器信息失败:")
+      logger.error(`错误状态: ${error.response?.status}`)
+      logger.error(`错误信息: ${error.response?.statusText}`)
+      logger.error(`错误详情: ${JSON.stringify(error.response?.data)}`)
+      logger.error(`请求URL: ${error.config?.url}`)
+      logger.error(`请求方法: ${error.config?.method}`)
+      
+      if (error.response?.status === 401) {
+        throw new Error("OneDrive访问令牌无效或已过期，请重新授权")
+      }
+      
+      throw new Error(`Failed to get OneDrive drive info: ${error.response?.data?.error?.message || error.message}`)
     }
   }
 

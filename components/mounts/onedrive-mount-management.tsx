@@ -26,7 +26,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select"
 import { toast } from "sonner"
-import { Cloud, Link, Plus, Trash2, AlertCircle, CheckCircle, PlugZap, RefreshCw, Info, Folder as FolderIcon, FileText, ArrowLeft, Download } from "lucide-react"
+import { Cloud, Link, Plus, Trash2, AlertCircle, CheckCircle, PlugZap, RefreshCw, Info, Folder as FolderIcon, FileText, ArrowLeft, Download, Copy } from "lucide-react"
 
 interface FolderItem {
 	id: string
@@ -60,21 +60,29 @@ export function OneDriveMountManagement() {
 	const [error, setError] = useState("")
 	const [success, setSuccess] = useState("")
 	const [azureConfigured, setAzureConfigured] = useState(false)
-	const [webdavConfigured, setWebdavConfigured] = useState(false)
+	const [oneDriveConnected, setOneDriveConnected] = useState(false)
+	const [storageInfo, setStorageInfo] = useState<{
+		total: number
+		used: number
+		available: number
+	} | null>(null)
 
-	// WebDAV 浏览状态
-	const [browserOpen, setBrowserOpen] = useState(false)
-	const [browsingMount, setBrowsingMount] = useState<MountPoint | null>(null)
-	const [browsingSubPath, setBrowsingSubPath] = useState("")
-	const [browseFolders, setBrowseFolders] = useState<Array<{ id: string; name: string; path: string }>>([])
-	const [browseFiles, setBrowseFiles] = useState<Array<{ id: string; name: string; path: string; size?: number }>>([])
-	const [loadingBrowse, setLoadingBrowse] = useState(false)
-	const [browseError, setBrowseError] = useState("")
 
 	const redirectUri = useMemo(() => {
 		if (typeof window === "undefined") return ""
 		return `${window.location.origin}/onedrive/callback`
 	}, [])
+
+	// 复制重定向URI到剪贴板
+	const copyRedirectUri = async () => {
+		if (!redirectUri) return
+		try {
+			await navigator.clipboard.writeText(redirectUri)
+			toast.success("重定向 URI 已复制到剪贴板")
+		} catch (error) {
+			toast.error("复制失败，请手动复制")
+		}
+	}
 
 	useEffect(() => {
 		if (!token) {
@@ -82,6 +90,7 @@ export function OneDriveMountManagement() {
 			return
 		}
 		fetchStorageConfig()
+		fetchOneDriveStatus()
 		fetchFolders()
 		fetchMounts()
 	}, [token])
@@ -95,9 +104,26 @@ export function OneDriveMountManagement() {
 				const data = await res.json()
 				const cfg = data?.config || {}
 				setAzureConfigured(!!cfg.oneDriveClientId)
-				setWebdavConfigured(!!cfg.oneDriveWebDavUrl && !!cfg.oneDriveWebDavUser && !!cfg.oneDriveWebDavPass)
 			}
 		} catch (_) {}
+	}
+
+	const fetchOneDriveStatus = async () => {
+		try {
+			const res = await fetch(`${API_URL}/storage/onedrive/status`, {
+				headers: { Authorization: `Bearer ${token}` },
+			})
+			if (res.ok) {
+				const data = await res.json()
+				setOneDriveConnected(data.connected || false)
+				if (data.connected && data.storageInfo) {
+					setStorageInfo(data.storageInfo)
+				}
+			}
+		} catch (_) {
+			setOneDriveConnected(false)
+			setStorageInfo(null)
+		}
 	}
 
 	const fetchFolders = async () => {
@@ -135,16 +161,38 @@ export function OneDriveMountManagement() {
 			toast.error("未配置 Azure 应用", { description: "仅配置 WebDAV 无需连接；如需 Graph 模式，请在存储设置填入 Client ID/Secret/Tenant" })
 			return
 		}
+
+		if (!redirectUri) {
+			toast.error("重定向 URI 错误", { description: "无法获取当前域名，请刷新页面重试" })
+			return
+		}
+
 		try {
 			const res = await fetch(`${API_URL}/storage/onedrive/auth-url?redirectUri=${encodeURIComponent(redirectUri)}`, {
 				headers: { Authorization: `Bearer ${token}` },
 			})
 			if (!res.ok) {
-				toast.error("无法获取授权链接", { description: "请检查 OneDrive Azure 配置是否完整" })
+				const errorData = await res.json().catch(() => ({}))
+				if (res.status === 400 && errorData.error?.includes("redirect_uri")) {
+					toast.error("重定向 URI 配置错误", { 
+						description: `请在 Azure 门户中添加重定向 URI: ${redirectUri}` 
+					})
+				} else {
+					toast.error("无法获取授权链接", { description: errorData.error || "请检查 OneDrive Azure 配置是否完整" })
+				}
 				return
 			}
 			const data = await res.json()
-			window.location.href = data.authUrl
+			
+			// 显示即将跳转的提示
+			toast.info("正在跳转到 Microsoft 授权页面...", { 
+				description: "请在新页面完成授权后返回" 
+			})
+			
+			// 延迟跳转，让用户看到提示
+			setTimeout(() => {
+				window.location.href = data.authUrl
+			}, 1000)
 		} catch (e) {
 			toast.error("网络错误", { description: "无法连接到服务器" })
 		}
@@ -208,95 +256,14 @@ export function OneDriveMountManagement() {
 
 	const getFolderPath = (folderId: string) => folders.find(f => f.id === folderId)?.path || ""
 
-	// WebDAV 浏览逻辑
-	const openBrowser = async (mount: MountPoint) => {
-		setBrowsingMount(mount)
-		setBrowsingSubPath("")
-		setBrowseFolders([])
-		setBrowseFiles([])
-		setBrowseError("")
-		setBrowserOpen(true)
-		await fetchWebDavContents(mount.id, "")
+	const formatBytes = (bytes: number) => {
+		if (bytes === 0) return '0 B'
+		const k = 1024
+		const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+		const i = Math.floor(Math.log(bytes) / Math.log(k))
+		return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 	}
 
-	const fetchWebDavContents = async (mountId: string, subPath: string) => {
-		try {
-			setLoadingBrowse(true)
-			setBrowseError("")
-			const params = new URLSearchParams({ mountId })
-			if (subPath) params.set("subPath", subPath)
-			const res = await fetch(`${API_URL}/storage/onedrive/webdav/browse?${params.toString()}`, {
-				headers: { Authorization: `Bearer ${token}` },
-			})
-			if (res.ok) {
-				const data = await res.json()
-				setBrowseFolders((data.folders || []).map((f: any) => ({ id: f.id, name: f.name, path: f.path })))
-				setBrowseFiles((data.files || []).map((f: any) => ({ id: f.id, name: f.name, path: f.path, size: f.size })))
-				setBrowsingSubPath(subPath)
-			} else {
-				const err = await res.json()
-				setBrowseError(err.error || "浏览失败")
-			}
-		} catch (e) {
-			setBrowseError("网络错误")
-		} finally {
-			setLoadingBrowse(false)
-		}
-	}
-
-	const goInto = async (folderPath: string) => {
-		if (!browsingMount) return
-		// folderPath 是 WebDAV 绝对路径，转换为相对挂载路径
-		const base = (browsingMount.oneDrivePath || "").replace(/^\/+|\/+$/g, "")
-		let rel = folderPath.replace(/^\/+/, "")
-		if (base && rel.startsWith(base + "/")) rel = rel.slice(base.length + 1)
-		await fetchWebDavContents(browsingMount.id, rel)
-	}
-
-	const goUp = async () => {
-		if (!browsingMount) return
-		const parts = browsingSubPath.split("/").filter(Boolean)
-		parts.pop()
-		const parent = parts.join("/")
-		await fetchWebDavContents(browsingMount.id, parent)
-	}
-
-	const handleDownload = async (filePath: string, name: string) => {
-		if (!browsingMount || !token) return
-		
-		try {
-			const base = (browsingMount.oneDrivePath || "").replace(/^\/+|\/+$/g, "")
-			let rel = filePath.replace(/^\/+/, "")
-			if (base && rel.startsWith(base + "/")) rel = rel.slice(base.length + 1)
-			
-			const params = new URLSearchParams({ mountId: browsingMount.id, path: rel, filename: name })
-			const response = await fetch(`${API_URL}/storage/onedrive/webdav/download?${params.toString()}`, {
-				headers: {
-					Authorization: `Bearer ${token}`,
-				},
-			})
-
-			if (response.ok) {
-				// 创建下载链接
-				const blob = await response.blob()
-				const url = window.URL.createObjectURL(blob)
-				const a = document.createElement('a')
-				a.style.display = 'none'
-				a.href = url
-				a.download = name
-				document.body.appendChild(a)
-				a.click()
-				window.URL.revokeObjectURL(url)
-				document.body.removeChild(a)
-			} else {
-				const errorData = await response.json().catch(() => ({}))
-				toast.error("下载失败", { description: errorData.error || '未知错误' })
-			}
-		} catch (error) {
-			console.error("Download failed:", error)
-			toast.error("下载失败", { description: "网络错误" })
-		}
-	}
 
 	if (loading) {
 		return (
@@ -313,20 +280,18 @@ export function OneDriveMountManagement() {
 					<h3 className="text-base sm:text-lg font-medium flex items-center gap-2">
 						<Cloud className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
 						OneDrive 挂载点
-						{webdavConfigured && (
-							<Badge variant="outline" className="ml-2 text-xs">WebDAV</Badge>
-						)}
+						<Badge variant="outline" className="ml-2 text-xs">Graph API</Badge>
 					</h3>
 					<p className="text-xs sm:text-sm text-muted-foreground">
-						管理当前账户的 OneDrive 挂载点{azureConfigured ? "（已配置 Azure，支持授权）" : webdavConfigured ? "（已配置 WebDAV）" : ""}
+						管理当前账户的 OneDrive API 挂载点{azureConfigured ? "（已配置 Azure，支持授权）" : "（未配置 Azure）"}
 					</p>
 				</div>
 				<div className="flex gap-2">
-					<Button variant="outline" onClick={fetchMounts} size="sm">
+					<Button variant="outline" onClick={() => { fetchMounts(); fetchOneDriveStatus(); }} size="sm">
 						<RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
 						<span className="hidden sm:inline">刷新</span>
 					</Button>
-					{azureConfigured && (
+					{azureConfigured && !oneDriveConnected && (
 						<Button onClick={connectOneDrive} size="sm">
 							<PlugZap className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
 							<span className="text-xs sm:text-sm">连接 OneDrive</span>
@@ -335,13 +300,83 @@ export function OneDriveMountManagement() {
 				</div>
 			</div>
 
-			{!azureConfigured && webdavConfigured && (
-				<Alert>
-					<Info className="h-4 w-4" />
+			{!azureConfigured && (
+				<Alert variant="destructive">
+					<AlertCircle className="h-4 w-4" />
 					<AlertDescription>
-						已配置 WebDAV。可直接创建挂载点；挂载浏览将逐步补充增强。
+						未配置 OneDrive API。请先到存储设置中配置 OneDrive API 连接信息（Client ID、Secret、Tenant ID）。
 					</AlertDescription>
 				</Alert>
+			)}
+
+			{azureConfigured && !oneDriveConnected && (
+				<Alert>
+					<Info className="h-4 w-4" />
+					<AlertDescription className="space-y-2">
+						<p>已配置 OneDrive API。点击"连接 OneDrive"进行授权后即可创建挂载点。</p>
+						<div className="mt-2 p-2 bg-muted rounded text-xs">
+							<p className="font-medium mb-1">重要提醒：</p>
+							<p>确保在 Azure 门户中已添加以下重定向 URI（自动生成）：</p>
+							<div className="flex items-center gap-2 mt-1">
+								<code className="flex-1 p-1 bg-background rounded break-all">
+									{redirectUri}
+								</code>
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={copyRedirectUri}
+									className="h-6 px-2 flex-shrink-0"
+									title="复制重定向 URI"
+								>
+									<Copy className="h-3 w-3" />
+								</Button>
+							</div>
+							<p className="text-muted-foreground mt-1">
+								💡 此 URI 会根据当前访问域名自动生成，支持多域名部署
+							</p>
+						</div>
+					</AlertDescription>
+				</Alert>
+			)}
+
+			{azureConfigured && oneDriveConnected && storageInfo && (
+				<Card className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
+					<CardContent className="p-4">
+						<div className="flex items-center gap-3">
+							<div className="flex-shrink-0">
+								<CheckCircle className="h-5 w-5 text-green-600" />
+							</div>
+							<div className="flex-1 min-w-0">
+								<h4 className="font-medium text-green-900 dark:text-green-100">OneDrive 已连接</h4>
+								<div className="mt-2 space-y-1 text-sm text-green-700 dark:text-green-300">
+									<div className="flex items-center justify-between">
+										<span>总容量：</span>
+										<span className="font-mono">{formatBytes(storageInfo.total)}</span>
+									</div>
+									<div className="flex items-center justify-between">
+										<span>已使用：</span>
+										<span className="font-mono">{formatBytes(storageInfo.used)}</span>
+									</div>
+									<div className="flex items-center justify-between">
+										<span>可用空间：</span>
+										<span className="font-mono">{formatBytes(storageInfo.available)}</span>
+									</div>
+									<div className="mt-2">
+										<div className="w-full bg-green-200 dark:bg-green-800 rounded-full h-2">
+											<div 
+												className="bg-green-600 dark:bg-green-400 h-2 rounded-full transition-all duration-300"
+												style={{ width: `${(storageInfo.used / storageInfo.total) * 100}%` }}
+											></div>
+										</div>
+										<p className="text-xs text-green-600 dark:text-green-400 mt-1 text-center">
+											使用率：{((storageInfo.used / storageInfo.total) * 100).toFixed(1)}%
+										</p>
+									</div>
+								</div>
+							</div>
+						</div>
+					</CardContent>
+				</Card>
 			)}
 
 			{error && (
@@ -364,8 +399,8 @@ export function OneDriveMountManagement() {
 				<Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
 					<DialogTrigger asChild>
 						<Button 
-							disabled={!azureConfigured && !webdavConfigured} 
-							title={!azureConfigured && !webdavConfigured ? "请先在存储设置中配置 Azure 或 WebDAV" : undefined}
+							disabled={!azureConfigured || !oneDriveConnected} 
+							title={!azureConfigured ? "请先在存储设置中配置 OneDrive API" : !oneDriveConnected ? "请先连接 OneDrive" : undefined}
 							size="sm"
 						>
 							<Plus className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
@@ -439,7 +474,14 @@ export function OneDriveMountManagement() {
 				<div className="text-center py-6 sm:py-8 text-muted-foreground">
 					<Cloud className="h-8 w-8 sm:h-12 sm:w-12 mx-auto mb-3 sm:mb-4 opacity-50" />
 					<p className="text-sm sm:text-base">暂无 OneDrive 挂载点</p>
-					<p className="text-xs sm:text-sm px-4">{azureConfigured ? "请先点击 \"连接 OneDrive\" 完成授权，再创建挂载点" : webdavConfigured ? "已启用 WebDAV，可直接创建挂载点" : "请先到存储设置配置 Azure 或 WebDAV"}</p>
+					<p className="text-xs sm:text-sm px-4">
+						{!azureConfigured 
+							? "请先到存储设置配置 OneDrive API" 
+							: !oneDriveConnected 
+								? "请先点击 \"连接 OneDrive\" 完成授权，再创建挂载点" 
+								: "点击 \"创建挂载点\" 开始使用"
+						}
+					</p>
 				</div>
 			) : (
 				<div className="space-y-3 sm:space-y-4">
@@ -463,9 +505,6 @@ export function OneDriveMountManagement() {
 										</div>
 									</div>
 									<div className="flex items-center gap-2">
-										<Button variant="outline" size="sm" onClick={() => openBrowser(mount)}>
-											<FolderIcon className="h-4 w-4" /> 浏览
-										</Button>
 										<Button variant="outline" size="sm" onClick={() => handleDeleteMount(mount.id)}>
 											<Trash2 className="h-4 w-4" />
 										</Button>
@@ -482,9 +521,6 @@ export function OneDriveMountManagement() {
 											</Badge>
 										</div>
 										<div className="flex items-center gap-1 ml-2">
-											<Button variant="outline" size="sm" onClick={() => openBrowser(mount)} className="h-8 w-8 p-0">
-												<FolderIcon className="h-3 w-3" />
-											</Button>
 											<Button variant="outline" size="sm" onClick={() => handleDeleteMount(mount.id)} className="h-8 w-8 p-0">
 												<Trash2 className="h-3 w-3" />
 											</Button>
@@ -512,99 +548,6 @@ export function OneDriveMountManagement() {
 				</div>
 			)}
 
-			{/* WebDAV 浏览对话框 */}
-			<Dialog open={browserOpen} onOpenChange={setBrowserOpen}>
-				<DialogContent className="max-w-3xl mx-4 sm:mx-auto max-h-[90vh] overflow-hidden flex flex-col">
-					<DialogHeader className="flex-shrink-0">
-						<DialogTitle className="text-base sm:text-lg">浏览 OneDrive (WebDAV)</DialogTitle>
-						<DialogDescription>
-							{browsingMount ? (
-								<div className="text-xs text-muted-foreground break-all">
-									挂载根：{browsingMount.oneDrivePath || "/"} / 当前：{browsingSubPath || "/"}
-								</div>
-							) : null}
-						</DialogDescription>
-					</DialogHeader>
-
-					<div className="space-y-3 flex-1 overflow-hidden">
-						<div className="flex items-center gap-2 flex-shrink-0">
-							<Button variant="outline" size="sm" onClick={goUp} disabled={!browsingSubPath || loadingBrowse}>
-								<ArrowLeft className="h-3 w-3 sm:h-4 sm:w-4 mr-1" /> 
-								<span className="text-xs sm:text-sm">上一级</span>
-							</Button>
-						</div>
-
-						{browseError && (
-							<Alert variant="destructive" className="flex-shrink-0">
-								<AlertCircle className="h-4 w-4" />
-								<AlertDescription className="text-sm">{browseError}</AlertDescription>
-							</Alert>
-						)}
-
-						{loadingBrowse ? (
-							<div className="flex items-center justify-center py-8">
-								<div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-							</div>
-						) : (
-							<div className="grid grid-cols-1 sm:grid-cols-2 gap-4 overflow-auto">
-								<div className="space-y-2">
-									<h4 className="text-sm font-medium sticky top-0 bg-background py-1">文件夹</h4>
-									{browseFolders.length === 0 ? (
-										<p className="text-xs text-muted-foreground">无</p>
-									) : (
-										<div className="space-y-1 max-h-48 sm:max-h-64 overflow-auto">
-											{browseFolders.map((f) => (
-												<button
-													key={f.id}
-													className="w-full text-left px-2 py-2 rounded hover:bg-muted flex items-center gap-2 text-sm"
-													onClick={() => goInto(f.path)}
-												>
-													<FolderIcon className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
-													<span className="truncate">{f.name}</span>
-												</button>
-											))}
-										</div>
-									)}
-								</div>
-								<div className="space-y-2">
-									<h4 className="text-sm font-medium sticky top-0 bg-background py-1">文件</h4>
-									{browseFiles.length === 0 ? (
-										<p className="text-xs text-muted-foreground">无</p>
-									) : (
-										<div className="space-y-1 max-h-48 sm:max-h-64 overflow-auto">
-											{browseFiles.map((f) => (
-												<div
-													key={f.id}
-													className="flex items-center justify-between px-2 py-2 rounded hover:bg-muted text-sm"
-												>
-													<div className="flex items-center gap-2 min-w-0 flex-1">
-														<FileText className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
-														<span className="truncate">{f.name}</span>
-													</div>
-													<Button
-														variant="ghost"
-														size="sm"
-														className="text-xs h-6 px-2 ml-2 flex-shrink-0"
-														onClick={() => handleDownload(f.path, f.name)}
-													>
-														<Download className="h-3 w-3 mr-1" /> 
-														<span className="hidden sm:inline">下载</span>
-													</Button>
-												</div>
-											))}
-										</div>
-									)}
-								</div>
-							</div>
-						)}
-					</div>
-					<DialogFooter className="flex-shrink-0">
-						<Button variant="outline" onClick={() => setBrowserOpen(false)} className="text-sm">
-							关闭
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
 		</div>
 	)
 }

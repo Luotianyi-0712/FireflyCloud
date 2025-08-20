@@ -2,7 +2,7 @@ import { Elysia, t } from "elysia"
 import { jwt } from "@elysiajs/jwt"
 import { bearer } from "@elysiajs/bearer"
 import { db } from "../db"
-import { storageConfig, r2MountPoints, oneDriveMountPoints, oneDriveAuth, folders } from "../db/schema"
+import { storageConfig, r2MountPoints, oneDriveMountPoints, webdavMountPoints, oneDriveAuth, folders } from "../db/schema"
 import { StorageService } from "../services/storage"
 import { logger } from "../utils/logger"
 import { nanoid } from "nanoid"
@@ -130,7 +130,7 @@ export const storageRoutes = new Elysia({ prefix: "/storage" })
     },
     {
       body: t.Object({
-        storageType: t.Union([t.Literal("local"), t.Literal("r2"), t.Literal("onedrive")]),
+        storageType: t.Union([t.Literal("local"), t.Literal("r2"), t.Literal("onedrive"), t.Literal("webdav")]),
         r2Endpoint: t.Optional(t.String()),
         r2AccessKey: t.Optional(t.String()),
         r2SecretKey: t.Optional(t.String()),
@@ -187,7 +187,7 @@ export const storageRoutes = new Elysia({ prefix: "/storage" })
         .from(r2MountPoints)
         .where(
           and(
-            eq(r2MountPoints.userId, user.userId),
+            eq(r2MountPoints.userId, String(user.userId)),
             eq(r2MountPoints.folderId, folderId)
           )
         )
@@ -203,7 +203,7 @@ export const storageRoutes = new Elysia({ prefix: "/storage" })
 
       await db.insert(r2MountPoints).values({
         id: mountId,
-        userId: user.userId,
+        userId: String(user.userId),
         folderId,
         r2Path,
         mountName,
@@ -235,7 +235,7 @@ export const storageRoutes = new Elysia({ prefix: "/storage" })
     const mounts = await db
       .select()
       .from(r2MountPoints)
-      .where(eq(r2MountPoints.userId, user.userId))
+      .where(eq(r2MountPoints.userId, String(user.userId)))
 
     logger.info(`用户 ${user.userId} 有 ${mounts.length} 个 R2 挂载点`)
     return { mounts }
@@ -253,7 +253,7 @@ export const storageRoutes = new Elysia({ prefix: "/storage" })
         .where(
           and(
             eq(r2MountPoints.id, mountId),
-            eq(r2MountPoints.userId, user.userId)
+            eq(r2MountPoints.userId, String(user.userId))
           )
         )
         .get()
@@ -341,6 +341,93 @@ export const storageRoutes = new Elysia({ prefix: "/storage" })
     }
   })
 
+  // 获取 OneDrive 连接状态和存储信息
+  .get("/onedrive/status", async ({ user, set }) => {
+    try {
+      logger.debug(`检查用户 OneDrive 状态: ${user.userId}`)
+
+      const config = await db.select().from(storageConfig).get()
+      if (!config || !config.oneDriveClientId) {
+        return { connected: false, error: "OneDrive not configured" }
+      }
+
+      // 检查用户是否已授权
+      const auth = await db
+        .select()
+        .from(oneDriveAuth)
+        .where(eq(oneDriveAuth.userId, String(user.userId)))
+        .get()
+
+      if (!auth) {
+        return { connected: false, error: "OneDrive not authenticated" }
+      }
+
+      // 检查令牌是否过期
+      const now = Date.now()
+      if (auth.expiresAt && auth.expiresAt <= now) {
+        // 尝试刷新令牌
+        try {
+          const oneDriveService = new OneDriveService({
+            clientId: config.oneDriveClientId,
+            clientSecret: config.oneDriveClientSecret || "",
+            tenantId: config.oneDriveTenantId || "common",
+          })
+
+          const newTokens = await oneDriveService.refreshToken(auth.refreshToken)
+          
+          // 更新数据库中的令牌
+          await db
+            .update(oneDriveAuth)
+            .set({
+              accessToken: newTokens.accessToken,
+              refreshToken: newTokens.refreshToken,
+              expiresAt: newTokens.expiresAt,
+              updatedAt: now,
+            })
+            .where(eq(oneDriveAuth.id, auth.id))
+
+          logger.info(`OneDrive 令牌刷新成功: 用户 ${user.userId}`)
+          auth.accessToken = newTokens.accessToken
+        } catch (refreshError) {
+          logger.error("OneDrive 令牌刷新失败:", refreshError)
+          return { connected: false, error: "Token expired and refresh failed" }
+        }
+      }
+
+      // 获取存储信息
+      try {
+        const oneDriveService = new OneDriveService({
+          clientId: config.oneDriveClientId,
+          clientSecret: config.oneDriveClientSecret || "",
+          tenantId: config.oneDriveTenantId || "common",
+        })
+
+        // 设置访问令牌
+        oneDriveService.setAccessToken(auth.accessToken)
+        
+        // 获取驱动器信息
+        const storageInfo = await oneDriveService.getDriveInfo()
+        
+        logger.info(`OneDrive 状态检查成功: 用户 ${user.userId}`)
+        return { 
+          connected: true, 
+          storageInfo: {
+            total: storageInfo.quota?.total || 0,
+            used: storageInfo.quota?.used || 0,
+            available: (storageInfo.quota?.total || 0) - (storageInfo.quota?.used || 0)
+          }
+        }
+      } catch (apiError) {
+        logger.error("获取 OneDrive 存储信息失败:", apiError)
+        return { connected: true, error: "Failed to get storage info" }
+      }
+    } catch (error) {
+      logger.error("OneDrive 状态检查失败:", error)
+      set.status = 500
+      return { connected: false, error: "Failed to check OneDrive status" }
+    }
+  })
+
   // OneDrive OAuth 回调处理
   .post("/onedrive/callback", async ({ body, user, set }) => {
     try {
@@ -367,7 +454,7 @@ export const storageRoutes = new Elysia({ prefix: "/storage" })
       const existingAuth = await db
         .select()
         .from(oneDriveAuth)
-        .where(eq(oneDriveAuth.userId, user.userId))
+        .where(eq(oneDriveAuth.userId, String(user.userId)))
         .get()
 
       const now = Date.now()
@@ -388,7 +475,7 @@ export const storageRoutes = new Elysia({ prefix: "/storage" })
       } else {
         await db.insert(oneDriveAuth).values({
           id: authId,
-          userId: user.userId,
+          userId: String(user.userId),
           accessToken: tokens.accessToken,
           refreshToken: tokens.refreshToken,
           expiresAt: tokens.expiresAt,
@@ -429,7 +516,7 @@ export const storageRoutes = new Elysia({ prefix: "/storage" })
         const auth = await db
           .select()
           .from(oneDriveAuth)
-          .where(eq(oneDriveAuth.userId, user.userId))
+          .where(eq(oneDriveAuth.userId, String(user.userId)))
           .get()
 
         if (!auth) {
@@ -444,7 +531,7 @@ export const storageRoutes = new Elysia({ prefix: "/storage" })
         .from(oneDriveMountPoints)
         .where(
           and(
-            eq(oneDriveMountPoints.userId, user.userId),
+            eq(oneDriveMountPoints.userId, String(user.userId)),
             eq(oneDriveMountPoints.folderId, folderId)
           )
         )
@@ -460,7 +547,7 @@ export const storageRoutes = new Elysia({ prefix: "/storage" })
 
       await db.insert(oneDriveMountPoints).values({
         id: mountId,
-        userId: user.userId,
+        userId: String(user.userId),
         folderId,
         oneDrivePath,
         oneDriveItemId,
@@ -495,7 +582,7 @@ export const storageRoutes = new Elysia({ prefix: "/storage" })
     const mounts = await db
       .select()
       .from(oneDriveMountPoints)
-      .where(eq(oneDriveMountPoints.userId, user.userId))
+      .where(eq(oneDriveMountPoints.userId, String(user.userId)))
 
     logger.info(`用户 ${user.userId} 有 ${mounts.length} 个 OneDrive 挂载点`)
     return { mounts }
@@ -514,7 +601,7 @@ export const storageRoutes = new Elysia({ prefix: "/storage" })
         .where(
           and(
             eq(oneDriveMountPoints.id, id),
-            eq(oneDriveMountPoints.userId, user.userId)
+            eq(oneDriveMountPoints.userId, String(user.userId))
           )
         )
         .get()
@@ -560,7 +647,7 @@ export const storageRoutes = new Elysia({ prefix: "/storage" })
       const mountPoint = await db
         .select()
         .from(oneDriveMountPoints)
-        .where(and(eq(oneDriveMountPoints.id, mountId), eq(oneDriveMountPoints.userId, user.userId)))
+        .where(and(eq(oneDriveMountPoints.id, mountId), eq(oneDriveMountPoints.userId, String(user.userId))))
         .get()
 
       if (!mountPoint) {
@@ -581,7 +668,7 @@ export const storageRoutes = new Elysia({ prefix: "/storage" })
         password: (config as any).oneDriveWebDavPass,
       })
 
-      const contents: any[] = await client.getDirectoryContents(targetPath, { deep: false })
+      const contents = await client.getDirectoryContents(targetPath, { deep: false }) as any[]
 
       const folders = contents
         .filter((item) => item.type === "directory")
@@ -638,7 +725,7 @@ export const storageRoutes = new Elysia({ prefix: "/storage" })
       const mountPoint = await db
         .select()
         .from(oneDriveMountPoints)
-        .where(and(eq(oneDriveMountPoints.id, mountId), eq(oneDriveMountPoints.userId, user.userId)))
+        .where(and(eq(oneDriveMountPoints.id, mountId), eq(oneDriveMountPoints.userId, String(user.userId))))
         .get()
 
       if (!mountPoint) {
@@ -648,6 +735,266 @@ export const storageRoutes = new Elysia({ prefix: "/storage" })
 
       // 校验请求路径在挂载根目录下
       const basePath = (mountPoint.oneDrivePath || "").replace(/^\/+|\/+$/g, "")
+      const requested = (filePath || "").replace(/\\/g, "/")
+      const normalized = ("/" + [basePath, requested.replace(/^\/+/, "")].filter(Boolean).join("/")).replace(/\/+/g, "/")
+      if (!(normalized === "/" + basePath || normalized.startsWith("/" + basePath + "/") || (basePath === ""))) {
+        set.status = 403
+        return { error: "Access outside of mount is not allowed" }
+      }
+
+      const { createClient } = await import("webdav")
+      const client = createClient(config.oneDriveWebDavUrl!, {
+        username: (config as any).oneDriveWebDavUser,
+        password: (config as any).oneDriveWebDavPass,
+      })
+
+      // 获取文件内容
+      const fileBuffer = await client.getFileContents(normalized, { format: "binary" }) as Buffer
+
+      const name = filename || normalized.split("/").pop() || "download.bin"
+      set.headers["Content-Type"] = "application/octet-stream"
+      set.headers["Content-Disposition"] = `attachment; filename="${encodeURIComponent(name)}"`
+      set.headers["Content-Length"] = String(fileBuffer.length)
+      return fileBuffer
+    } catch (error) {
+      logger.error("WebDAV 文件下载失败:", error)
+      set.status = 500
+      return { error: "Failed to download WebDAV file" }
+    }
+  }, {
+    query: t.Object({
+      mountId: t.String(),
+      path: t.String(),
+      filename: t.Optional(t.String()),
+    })
+  })
+
+  // ===== WebDAV 独立 API 端点 =====
+  
+  // 创建 WebDAV 挂载点
+  .post("/webdav/mount", async ({ body, user, set }) => {
+    try {
+      const { folderId, webdavPath, mountName } = body
+
+      logger.info(`创建 WebDAV 挂载点: ${mountName} -> ${webdavPath}`)
+
+      // 检查 WebDAV 是否已配置
+      const config = await db.select().from(storageConfig).get()
+      const webdavConfigured = !!(config?.oneDriveWebDavUrl && config?.oneDriveWebDavUser && config?.oneDriveWebDavPass)
+
+      if (!webdavConfigured) {
+        set.status = 400
+        return { error: "WebDAV not configured" }
+      }
+
+      // 检查挂载点是否已存在
+      const existingMount = await db
+        .select()
+        .from(webdavMountPoints)
+        .where(
+          and(
+            eq(webdavMountPoints.userId, String(user.userId)),
+            eq(webdavMountPoints.folderId, folderId)
+          )
+        )
+        .get()
+
+      if (existingMount) {
+        set.status = 400
+        return { error: "Mount point already exists for this folder" }
+      }
+
+      const mountId = nanoid()
+      const now = Date.now()
+
+      await db.insert(webdavMountPoints).values({
+        id: mountId,
+        userId: String(user.userId),
+        folderId,
+        webdavPath,
+        mountName,
+        enabled: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      logger.database('INSERT', 'webdav_mount_points')
+      logger.info(`WebDAV 挂载点创建成功: ${mountName}`)
+
+      return { message: "Mount point created successfully", mountId }
+    } catch (error) {
+      logger.error("创建 WebDAV 挂载点失败:", error)
+      set.status = 500
+      return { error: "Failed to create mount point" }
+    }
+  }, {
+    body: t.Object({
+      folderId: t.String(),
+      webdavPath: t.String(),
+      mountName: t.String(),
+    }),
+  })
+
+  // 获取用户的 WebDAV 挂载点
+  .get("/webdav/mounts", async ({ user }) => {
+    logger.debug(`获取用户 WebDAV 挂载点: ${user.userId}`)
+
+    const mounts = await db
+      .select()
+      .from(webdavMountPoints)
+      .where(eq(webdavMountPoints.userId, String(user.userId)))
+
+    logger.info(`用户 ${user.userId} 有 ${mounts.length} 个 WebDAV 挂载点`)
+    return { mounts }
+  })
+
+  // 删除 WebDAV 挂载点
+  .delete("/webdav/mounts/:id", async ({ params, user, set }) => {
+    try {
+      const { id } = params
+
+      logger.info(`删除 WebDAV 挂载点: ${id}`)
+
+      const existingMount = await db
+        .select()
+        .from(webdavMountPoints)
+        .where(
+          and(
+            eq(webdavMountPoints.id, id),
+            eq(webdavMountPoints.userId, String(user.userId))
+          )
+        )
+        .get()
+
+      if (!existingMount) {
+        set.status = 404
+        return { error: "Mount point not found" }
+      }
+
+      await db
+        .delete(webdavMountPoints)
+        .where(eq(webdavMountPoints.id, id))
+
+      logger.database('DELETE', 'webdav_mount_points')
+      logger.info(`WebDAV 挂载点删除成功: ${id}`)
+
+      return { message: "Mount point deleted successfully" }
+    } catch (error) {
+      logger.error("删除 WebDAV 挂载点失败:", error)
+      set.status = 500
+      return { error: "Failed to delete mount point" }
+    }
+  })
+
+  // 浏览 WebDAV 挂载内容
+  .get("/webdav/browse", async ({ query, user, set }) => {
+    try {
+      const { mountId, subPath } = query as { mountId?: string; subPath?: string }
+      if (!mountId) {
+        set.status = 400
+        return { error: "mountId is required" }
+      }
+
+      // 读取存储配置并校验 WebDAV 是否可用
+      const config = await db.select().from(storageConfig).get()
+      const webdavConfigured = !!(config?.oneDriveWebDavUrl && config?.oneDriveWebDavUser && config?.oneDriveWebDavPass)
+      if (!webdavConfigured) {
+        set.status = 400
+        return { error: "WebDAV not configured" }
+      }
+
+      // 校验挂载点归属
+      const mountPoint = await db
+        .select()
+        .from(webdavMountPoints)
+        .where(and(eq(webdavMountPoints.id, mountId), eq(webdavMountPoints.userId, String(user.userId))))
+        .get()
+
+      if (!mountPoint) {
+        set.status = 404
+        return { error: "Mount point not found" }
+      }
+
+      // 规范化路径，限制在挂载根目录下
+      const basePath = (mountPoint.webdavPath || "").replace(/^\/+|\/+$/g, "")
+      const relative = (subPath || "").replace(/^\/+/, "").replace(/\.\./g, "")
+      const joined = [basePath, relative].filter(Boolean).join("/")
+      const targetPath = ("/" + joined).replace(/\/+/g, "/") || "/"
+
+      // 动态引入 webdav 客户端
+      const { createClient } = await import("webdav")
+      const client = createClient(config.oneDriveWebDavUrl!, {
+        username: (config as any).oneDriveWebDavUser,
+        password: (config as any).oneDriveWebDavPass,
+      })
+
+      const contents = await client.getDirectoryContents(targetPath, { deep: false }) as any[]
+
+      const folders = contents
+        .filter((item) => item.type === "directory")
+        .map((dir) => {
+          const name = dir.basename || dir.filename?.split("/").pop() || ""
+          const path = dir.filename || dir.path || (targetPath === "/" ? `/${name}` : `${targetPath}/${name}`)
+          return { id: dir.etag || name, name, path, mountPointId: mountPoint.id, itemCount: undefined, lastmod: dir.lastmod }
+        })
+
+      const files = contents
+        .filter((item) => item.type === "file")
+        .map((f) => {
+          const name = f.basename || f.filename?.split("/").pop() || ""
+          const path = f.filename || f.path || (targetPath === "/" ? `/${name}` : `${targetPath}/${name}`)
+          return {
+            id: f.etag || path,
+            name,
+            path,
+            size: typeof f.size === "number" ? f.size : 0,
+            lastmod: f.lastmod,
+          }
+        })
+
+      logger.info(`WebDAV 浏览: ${targetPath} - 目录 ${folders.length}，文件 ${files.length}`)
+      return { mountPoint: { id: mountPoint.id, basePath: mountPoint.webdavPath, currentPath: targetPath }, folders, files }
+    } catch (error) {
+      logger.error("WebDAV 浏览失败:", error)
+      set.status = 500
+      return { error: "Failed to browse WebDAV contents" }
+    }
+  }, {
+    query: t.Object({
+      mountId: t.String(),
+      subPath: t.Optional(t.String()),
+    })
+  })
+
+  // 下载 WebDAV 文件
+  .get("/webdav/download", async ({ query, user, set }) => {
+    try {
+      const { mountId, path: filePath, filename } = query as { mountId?: string; path?: string; filename?: string }
+      if (!mountId || !filePath) {
+        set.status = 400
+        return { error: "mountId and path are required" }
+      }
+
+      const config = await db.select().from(storageConfig).get()
+      const webdavConfigured = !!(config?.oneDriveWebDavUrl && config?.oneDriveWebDavUser && config?.oneDriveWebDavPass)
+      if (!webdavConfigured) {
+        set.status = 400
+        return { error: "WebDAV not configured" }
+      }
+
+      const mountPoint = await db
+        .select()
+        .from(webdavMountPoints)
+        .where(and(eq(webdavMountPoints.id, mountId), eq(webdavMountPoints.userId, String(user.userId))))
+        .get()
+
+      if (!mountPoint) {
+        set.status = 404
+        return { error: "Mount point not found" }
+      }
+
+      // 校验请求路径在挂载根目录下
+      const basePath = (mountPoint.webdavPath || "").replace(/^\/+|\/+$/g, "")
       const requested = (filePath || "").replace(/\\/g, "/")
       const normalized = ("/" + [basePath, requested.replace(/^\/+/, "")].filter(Boolean).join("/")).replace(/\/+/g, "/")
       if (!(normalized === "/" + basePath || normalized.startsWith("/" + basePath + "/") || (basePath === ""))) {

@@ -8,25 +8,26 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-
 import { Checkbox } from "@/components/ui/checkbox"
 import { Separator } from "@/components/ui/separator"
-import { HardDrive, Cloud, Save, CheckCircle, AlertCircle, Clock } from "lucide-react"
+import { HardDrive, Cloud, Save, CheckCircle, AlertCircle, Clock, Globe, Copy } from "lucide-react"
 import { toast } from "sonner"
+import { AzureSetupGuide } from "./azure-setup-guide"
 
 interface StorageConfig {
   enableLocal: boolean
   enableR2: boolean
   enableOneDrive: boolean
+  enableWebDAV: boolean
   r2Endpoint: string
   r2Bucket: string
   r2AccessKey?: string
   r2SecretKey?: string
   oneDriveClientId: string
   oneDriveTenantId: string
-  oneDriveWebDavUrl?: string
-  oneDriveWebDavUser?: string
-  oneDriveWebDavPass?: string
+  webDavUrl?: string
+  webDavUser?: string
+  webDavPass?: string
 }
 
 export function StorageConfiguration() {
@@ -34,20 +35,22 @@ export function StorageConfiguration() {
     enableLocal: true,
     enableR2: false,
     enableOneDrive: false,
+    enableWebDAV: false,
     r2Endpoint: "",
     r2Bucket: "",
     r2AccessKey: "",
     r2SecretKey: "",
     oneDriveClientId: "",
     oneDriveTenantId: "",
-    oneDriveWebDavUrl: "",
-    oneDriveWebDavUser: "",
-    oneDriveWebDavPass: "",
+    webDavUrl: "",
+    webDavUser: "",
+    webDavPass: "",
   })
   const [formData, setFormData] = useState({
     enableLocal: true,
     enableR2: false,
     enableOneDrive: false,
+    enableWebDAV: false,
     r2Endpoint: "",
     r2AccessKey: "",
     r2SecretKey: "",
@@ -55,9 +58,9 @@ export function StorageConfiguration() {
     oneDriveClientId: "",
     oneDriveClientSecret: "",
     oneDriveTenantId: "",
-    oneDriveWebDavUrl: "",
-    oneDriveWebDavUser: "",
-    oneDriveWebDavPass: "",
+    webDavUrl: "",
+    webDavUser: "",
+    webDavPass: "",
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -89,15 +92,16 @@ export function StorageConfiguration() {
           enableLocal: data.config.enableMixedMode || data.config.storageType === "local",
           enableR2: data.config.enableMixedMode || data.config.storageType === "r2",
           enableOneDrive: data.config.enableMixedMode || data.config.storageType === "onedrive",
+          enableWebDAV: data.config.enableMixedMode || data.config.storageType === "webdav",
           r2Endpoint: data.config.r2Endpoint || "",
           r2Bucket: data.config.r2Bucket || "",
           r2AccessKey: data.config.r2AccessKey || "",
           r2SecretKey: data.config.r2SecretKey || "",
           oneDriveClientId: data.config.oneDriveClientId || "",
           oneDriveTenantId: data.config.oneDriveTenantId || "",
-          oneDriveWebDavUrl: data.config.oneDriveWebDavUrl || "",
-          oneDriveWebDavUser: data.config.oneDriveWebDavUser || "",
-          oneDriveWebDavPass: data.config.oneDriveWebDavPass || "",
+          webDavUrl: data.config.oneDriveWebDavUrl || "",
+          webDavUser: data.config.oneDriveWebDavUser || "",
+          webDavPass: data.config.oneDriveWebDavPass || "",
         }
 
         setConfig(convertedConfig)
@@ -105,6 +109,7 @@ export function StorageConfiguration() {
           enableLocal: convertedConfig.enableLocal,
           enableR2: convertedConfig.enableR2,
           enableOneDrive: convertedConfig.enableOneDrive,
+          enableWebDAV: convertedConfig.enableWebDAV,
           r2Endpoint: convertedConfig.r2Endpoint,
           r2AccessKey: convertedConfig.r2AccessKey || "",
           r2SecretKey: convertedConfig.r2SecretKey || "",
@@ -112,9 +117,9 @@ export function StorageConfiguration() {
           oneDriveClientId: convertedConfig.oneDriveClientId,
           oneDriveClientSecret: "",
           oneDriveTenantId: convertedConfig.oneDriveTenantId,
-          oneDriveWebDavUrl: convertedConfig.oneDriveWebDavUrl || "",
-          oneDriveWebDavUser: convertedConfig.oneDriveWebDavUser || "",
-          oneDriveWebDavPass: convertedConfig.oneDriveWebDavPass || "",
+          webDavUrl: convertedConfig.webDavUrl || "",
+          webDavUser: convertedConfig.webDavUser || "",
+          webDavPass: convertedConfig.webDavPass || "",
         })
       }
     } catch (error) {
@@ -130,7 +135,8 @@ export function StorageConfiguration() {
     // 验证至少选择一个存储后端
     const enabledCount = (formData.enableLocal ? 1 : 0) +
                         (formData.enableR2 ? 1 : 0) +
-                        (formData.enableOneDrive ? 1 : 0)
+                        (formData.enableOneDrive ? 1 : 0) +
+                        (formData.enableWebDAV ? 1 : 0)
 
     if (enabledCount === 0) {
       toast.error("配置错误", {
@@ -143,8 +149,10 @@ export function StorageConfiguration() {
 
     try {
       // 确定主要存储类型
-      let storageType: "local" | "r2" | "onedrive" = "local"
-      if (formData.enableOneDrive && !formData.enableLocal && !formData.enableR2) {
+      let storageType: "local" | "r2" | "onedrive" | "webdav" = "local"
+      if (formData.enableWebDAV && !formData.enableLocal && !formData.enableR2 && !formData.enableOneDrive) {
+        storageType = "webdav"
+      } else if (formData.enableOneDrive && !formData.enableLocal && !formData.enableR2) {
         storageType = "onedrive"
       } else if (formData.enableR2 && !formData.enableLocal) {
         storageType = "r2"
@@ -162,9 +170,10 @@ export function StorageConfiguration() {
         oneDriveClientId: formData.oneDriveClientId,
         oneDriveClientSecret: formData.oneDriveClientSecret,
         oneDriveTenantId: formData.oneDriveTenantId,
-        oneDriveWebDavUrl: formData.oneDriveWebDavUrl,
-        oneDriveWebDavUser: formData.oneDriveWebDavUser,
-        oneDriveWebDavPass: formData.oneDriveWebDavPass,
+        // WebDAV 配置映射到原有字段
+        oneDriveWebDavUrl: formData.webDavUrl,
+        oneDriveWebDavUser: formData.webDavUser,
+        oneDriveWebDavPass: formData.webDavPass,
       }
 
       const response = await fetch(`${API_URL}/storage/config`, {
@@ -214,13 +223,12 @@ export function StorageConfiguration() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             当前存储后端
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               {config.enableLocal && <Badge variant="secondary">本地存储</Badge>}
               {config.enableR2 && <Badge variant="default">Cloudflare R2</Badge>}
-              {config.enableOneDrive && (
-                <Badge variant="default">OneDrive<Badge variant="outline" className="ml-2">WebDAV</Badge></Badge>
-              )}
-              {!config.enableLocal && !config.enableR2 && !config.enableOneDrive && (
+              {config.enableOneDrive && <Badge variant="default">OneDrive API</Badge>}
+              {config.enableWebDAV && <Badge variant="outline">WebDAV</Badge>}
+              {!config.enableLocal && !config.enableR2 && !config.enableOneDrive && !config.enableWebDAV && (
                 <Badge variant="destructive">未配置</Badge>
               )}
             </div>
@@ -230,7 +238,8 @@ export function StorageConfiguration() {
               const enabledStorages: string[] = []
               if (config.enableLocal) enabledStorages.push("本地存储")
               if (config.enableR2) enabledStorages.push(`Cloudflare R2${config.r2Bucket ? ` (${config.r2Bucket})` : ""}`)
-              if (config.enableOneDrive) enabledStorages.push("OneDrive(WebDAV)")
+              if (config.enableOneDrive) enabledStorages.push("OneDrive API")
+              if (config.enableWebDAV) enabledStorages.push("WebDAV")
 
               if (enabledStorages.length === 0) {
                 return "未配置任何存储后端"
@@ -252,7 +261,7 @@ export function StorageConfiguration() {
         <CardContent className="space-y-6">
           <div className="space-y-4">
             <Label className="text-base font-medium">存储策略</Label>
-            <p className="text-sm text-muted-foreground">选择一个或多个存储后端。OneDrive 现已支持以 <span className="font-medium">WebDAV</span> 方式配置。</p>
+            <p className="text-sm text-muted-foreground">选择一个或多个存储后端。OneDrive API 和 WebDAV 现已分离为独立选项。</p>
 
             <div className="space-y-3">
               <div className="flex items-center space-x-2">
@@ -288,7 +297,20 @@ export function StorageConfiguration() {
                 <Label htmlFor="enableOneDrive" className="flex items-center gap-2 cursor-pointer">
                   <Cloud className="h-4 w-4" />
                   OneDrive
-                  <Badge variant="outline" className="ml-2 text-xs">WebDAV</Badge>
+                  <Badge variant="outline" className="ml-2 text-xs">API</Badge>
+                </Label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="enableWebDAV"
+                  checked={formData.enableWebDAV}
+                  onCheckedChange={(checked) => handleInputChange("enableWebDAV", checked)}
+                />
+                <Label htmlFor="enableWebDAV" className="flex items-center gap-2 cursor-pointer">
+                  <Globe className="h-4 w-4" />
+                  WebDAV
+                  <Badge variant="outline" className="ml-2 text-xs">通用</Badge>
                 </Label>
               </div>
             </div>
@@ -375,44 +397,16 @@ export function StorageConfiguration() {
             <>
               <Separator />
               <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Cloud className="h-5 w-5 text-blue-600" />
-                  <h3 className="text-lg font-medium">OneDrive 配置</h3>
-                  <Badge variant="outline" className="ml-2">WebDAV</Badge>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Cloud className="h-5 w-5 text-blue-600" />
+                    <h3 className="text-lg font-medium">OneDrive API 配置</h3>
+                    <Badge variant="outline" className="ml-2">Graph API</Badge>
+                  </div>
+                  <AzureSetupGuide />
                 </div>
 
                 <div className="grid gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="oneDriveWebDavUrl">WebDAV 地址</Label>
-                    <Input
-                      id="oneDriveWebDavUrl"
-                      value={formData.oneDriveWebDavUrl}
-                      onChange={(e) => handleInputChange("oneDriveWebDavUrl", e.target.value)}
-                      placeholder="https://dav.example.com/remote.php/dav/files/..."
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="oneDriveWebDavUser">WebDAV 用户名</Label>
-                    <Input
-                      id="oneDriveWebDavUser"
-                      value={formData.oneDriveWebDavUser}
-                      onChange={(e) => handleInputChange("oneDriveWebDavUser", e.target.value)}
-                      placeholder="输入 WebDAV 用户名"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="oneDriveWebDavPass">WebDAV 密码</Label>
-                    <Input
-                      id="oneDriveWebDavPass"
-                      type="password"
-                      value={formData.oneDriveWebDavPass}
-                      onChange={(e) => handleInputChange("oneDriveWebDavPass", e.target.value)}
-                      placeholder="输入 WebDAV 密码"
-                    />
-                  </div>
-
-                  <Separator />
-
                   <div className="space-y-2">
                     <Label htmlFor="oneDriveClientId">应用程序 ID (Client ID)</Label>
                     <Input
@@ -442,16 +436,98 @@ export function StorageConfiguration() {
                       onChange={(e) => handleInputChange("oneDriveTenantId", e.target.value)}
                       placeholder="输入租户 ID 或使用 'common'"
                     />
+                  </div>
+                </div>
+
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription className="space-y-2">
+                    <p>OneDrive API 方式需要在 Azure 门户中注册应用程序并获取相应的客户端凭据。支持完整的 Microsoft Graph API 功能。</p>
+                    <div className="mt-3 p-3 bg-muted rounded-md">
+                      <p className="font-medium text-sm mb-2">重要：Azure 应用重定向 URI 配置</p>
+                      <p className="text-sm mb-2">系统已自动生成重定向 URI，请添加到 Azure 门户：</p>
+                      <div className="flex items-center gap-2 mb-2">
+                        <code className="flex-1 text-xs bg-background px-2 py-1 rounded border break-all">
+                          {typeof window !== "undefined" ? `${window.location.origin}/onedrive/callback` : "https://your-domain.com/onedrive/callback"}
+                        </code>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const uri = typeof window !== "undefined" ? `${window.location.origin}/onedrive/callback` : ""
+                            if (uri) {
+                              navigator.clipboard.writeText(uri).then(() => {
+                                toast.success("重定向 URI 已复制到剪贴板")
+                              }).catch(() => {
+                                toast.error("复制失败，请手动复制")
+                              })
+                            }
+                          }}
+                          className="flex-shrink-0"
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        💡 此 URI 会根据当前访问域名自动生成。请将其添加到 Azure 应用的"身份验证"→"重定向 URI"→"Web"平台中
+                      </p>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              </div>
+            </>
+          )}
+
+          {formData.enableWebDAV && (
+            <>
+              <Separator />
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Globe className="h-5 w-5 text-green-600" />
+                  <h3 className="text-lg font-medium">WebDAV 配置</h3>
+                  <Badge variant="outline" className="ml-2">通用协议</Badge>
+                </div>
+
+                <div className="grid gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="webDavUrl">WebDAV 服务器地址</Label>
+                    <Input
+                      id="webDavUrl"
+                      value={formData.webDavUrl}
+                      onChange={(e) => handleInputChange("webDavUrl", e.target.value)}
+                      placeholder="https://dav.example.com/remote.php/dav/files/username/"
+                    />
                     <p className="text-xs text-muted-foreground">
-                      WebDAV 与 Graph API 可二选一配置；若仅使用 WebDAV，可留空下方 Azure 配置。
+                      支持 OneDrive、Nextcloud、ownCloud 等 WebDAV 兼容服务
                     </p>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="webDavUser">用户名</Label>
+                    <Input
+                      id="webDavUser"
+                      value={formData.webDavUser}
+                      onChange={(e) => handleInputChange("webDavUser", e.target.value)}
+                      placeholder="输入 WebDAV 用户名"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="webDavPass">密码</Label>
+                    <Input
+                      id="webDavPass"
+                      type="password"
+                      value={formData.webDavPass}
+                      onChange={(e) => handleInputChange("webDavPass", e.target.value)}
+                      placeholder="输入 WebDAV 密码或应用专用密码"
+                    />
                   </div>
                 </div>
 
                 <Alert>
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>
-                    WebDAV 方式将使用您提供的 WebDAV 凭据访问 OneDrive（或兼容的 WebDAV 网关）。请确保地址、用户名、密码正确且具备读写权限。
+                    WebDAV 是通用的文件传输协议，支持多种云存储服务。请确保服务器地址、用户名和密码正确，且具备读写权限。
                   </AlertDescription>
                 </Alert>
               </div>
@@ -491,11 +567,20 @@ export function StorageConfiguration() {
             </div>
           </div>
           <div className="flex items-start gap-2">
-            <Clock className="h-4 w-4 text-orange-500 mt-0.5" />
+            <Clock className="h-4 w-4 text-purple-500 mt-0.5" />
             <div className="text-sm">
-              <p className="font-medium">OneDrive（WebDAV）</p>
+              <p className="font-medium">OneDrive API</p>
               <p className="text-muted-foreground">
-                现已支持以 WebDAV 方式配置 OneDrive 存储策略；后续版本会进一步完善 OneDrive 直连能力与挂载管理。
+                OneDrive API 方式提供完整的 Microsoft Graph 功能，支持高级文件操作和权限管理。
+              </p>
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <CheckCircle className="h-4 w-4 text-green-500 mt-0.5" />
+            <div className="text-sm">
+              <p className="font-medium">WebDAV 通用性</p>
+              <p className="text-muted-foreground">
+                WebDAV 协议具有良好的兼容性，支持 OneDrive、Nextcloud、ownCloud 等多种云存储服务。
               </p>
             </div>
           </div>

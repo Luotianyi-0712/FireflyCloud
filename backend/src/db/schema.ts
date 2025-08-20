@@ -89,12 +89,23 @@ export const oneDriveAuth = sqliteTable("onedrive_auth", {
 // OneDrive 挂载点表
 export const oneDriveMountPoints = sqliteTable("onedrive_mount_points", {
   id: text("id").primaryKey(),
-  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  folderId: text("folder_id").notNull().references(() => folders.id, { onDelete: "cascade" }),
-  oneDrivePath: text("onedrive_path").notNull(), // OneDrive 中的路径
-  oneDriveItemId: text("onedrive_item_id"), // OneDrive 文件夹的唯一ID
-  mountName: text("mount_name").notNull(), // 挂载点显示名称
-  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  userId: text("user_id").notNull(),
+  folderId: text("folder_id").notNull(),
+  oneDrivePath: text("onedrive_path").notNull(),
+  oneDriveItemId: text("onedrive_item_id"),
+  mountName: text("mount_name").notNull(),
+  enabled: integer("enabled", { mode: "boolean" }).default(true),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+})
+
+export const webdavMountPoints = sqliteTable("webdav_mount_points", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  folderId: text("folder_id").notNull(),
+  webdavPath: text("webdav_path").notNull(),
+  mountName: text("mount_name").notNull(),
+  enabled: integer("enabled", { mode: "boolean" }).default(true),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 })
