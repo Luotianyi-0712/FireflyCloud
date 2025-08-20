@@ -27,14 +27,24 @@ interface R2MountInfo {
   currentR2Path?: string
 }
 
+interface OneDriveMountInfo {
+  id: string
+  mountName: string
+  oneDrivePath: string
+  folderId: string
+  currentOneDrivePath?: string
+}
+
 interface FolderBreadcrumbProps {
   currentFolderId: string | null
   onFolderSelect: (folderId: string | null) => void
   r2MountInfo?: R2MountInfo | null
   onR2Navigate?: (r2Path: string) => void
+  oneDriveMountInfo?: OneDriveMountInfo | null
+  onOneDriveNavigate?: (oneDrivePath: string) => void
 }
 
-export function FolderBreadcrumb({ currentFolderId, onFolderSelect, r2MountInfo, onR2Navigate }: FolderBreadcrumbProps) {
+export function FolderBreadcrumb({ currentFolderId, onFolderSelect, r2MountInfo, onR2Navigate, oneDriveMountInfo, onOneDriveNavigate }: FolderBreadcrumbProps) {
   const [breadcrumbPath, setBreadcrumbPath] = useState<FolderItem[]>([])
   const [loading, setLoading] = useState(false)
   const { token } = useAuth()
@@ -84,7 +94,7 @@ export function FolderBreadcrumb({ currentFolderId, onFolderSelect, r2MountInfo,
 
     while (currentFolder) {
       path.unshift(currentFolder)
-      currentFolder = currentFolder.parentId ? folderMap.get(currentFolder.parentId) : null
+      currentFolder = currentFolder.parentId ? folderMap.get(currentFolder.parentId) || undefined : undefined
     }
 
     return path
@@ -120,6 +130,36 @@ export function FolderBreadcrumb({ currentFolderId, onFolderSelect, r2MountInfo,
     return pathSegments.join('/')
   }
 
+  // 解析OneDrive路径为面包屑段
+  const parseOneDrivePath = (oneDrivePath: string, mountOneDrivePath: string): string[] => {
+    if (!oneDrivePath) return []
+
+    // 如果当前OneDrive路径与挂载点路径相同，返回空数组（表示在挂载点根目录）
+    if (oneDrivePath === mountOneDrivePath) return []
+
+    // 计算相对于挂载点的路径
+    let relativePath = oneDrivePath
+    if (mountOneDrivePath && oneDrivePath.startsWith(mountOneDrivePath)) {
+      relativePath = oneDrivePath.substring(mountOneDrivePath.length)
+      // 移除开头的斜杠
+      if (relativePath.startsWith('/')) {
+        relativePath = relativePath.substring(1)
+      }
+    }
+
+    // 分割路径并过滤空字符串
+    return relativePath.split('/').filter(Boolean)
+  }
+
+  // 构建OneDrive路径（从挂载点到指定段）
+  const buildOneDrivePath = (mountOneDrivePath: string, segments: string[], endIndex: number): string => {
+    const pathSegments = segments.slice(0, endIndex + 1)
+    if (mountOneDrivePath) {
+      return mountOneDrivePath + (pathSegments.length > 0 ? '/' + pathSegments.join('/') : '')
+    }
+    return pathSegments.join('/')
+  }
+
   if (loading) {
     return (
       <div className="flex items-center space-x-2">
@@ -151,7 +191,7 @@ export function FolderBreadcrumb({ currentFolderId, onFolderSelect, r2MountInfo,
           <div key={folder.id} className="flex items-center">
             <BreadcrumbSeparator />
             <BreadcrumbItem>
-              {index === breadcrumbPath.length - 1 && !r2MountInfo ? (
+              {index === breadcrumbPath.length - 1 && !r2MountInfo && !oneDriveMountInfo ? (
                 <BreadcrumbPage className="flex items-center gap-1">
                   <Folder className="h-4 w-4" />
                   {folder.name}
@@ -216,6 +256,61 @@ export function FolderBreadcrumb({ currentFolderId, onFolderSelect, r2MountInfo,
                           }
                         }}
                         className="flex items-center gap-1 text-purple-600"
+                      >
+                        <Folder className="h-4 w-4" />
+                        {segment}
+                      </BreadcrumbLink>
+                    )}
+                  </BreadcrumbItem>
+                </div>
+              ))
+            })()}
+          </>
+        )}
+
+        {/* OneDrive挂载点显示 */}
+        {oneDriveMountInfo && (
+          <>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbLink
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault()
+                  if (onOneDriveNavigate) {
+                    onOneDriveNavigate(oneDriveMountInfo.oneDrivePath)
+                  }
+                }}
+                className="flex items-center gap-1 text-blue-600"
+              >
+                <Cloud className="h-4 w-4" />
+                {oneDriveMountInfo.mountName}
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+
+            {/* OneDrive内部路径 */}
+            {(() => {
+              const onedrivePathSegments = parseOneDrivePath(oneDriveMountInfo.currentOneDrivePath || oneDriveMountInfo.oneDrivePath, oneDriveMountInfo.oneDrivePath)
+              return onedrivePathSegments.map((segment, index) => (
+                <div key={`onedrive-${index}`} className="flex items-center">
+                  <BreadcrumbSeparator />
+                  <BreadcrumbItem>
+                    {index === onedrivePathSegments.length - 1 ? (
+                      <BreadcrumbPage className="flex items-center gap-1 text-blue-600">
+                        <Folder className="h-4 w-4" />
+                        {segment}
+                      </BreadcrumbPage>
+                    ) : (
+                      <BreadcrumbLink
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          if (onOneDriveNavigate) {
+                            const targetPath = buildOneDrivePath(oneDriveMountInfo.oneDrivePath, onedrivePathSegments, index)
+                            onOneDriveNavigate(targetPath)
+                          }
+                        }}
+                        className="flex items-center gap-1 text-blue-600"
                       >
                         <Folder className="h-4 w-4" />
                         {segment}

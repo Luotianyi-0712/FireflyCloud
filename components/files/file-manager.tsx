@@ -31,6 +31,7 @@ export function FileManager() {
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null)
   const [r2MountInfo, setR2MountInfo] = useState<any>(null)
+  const [oneDriveMountInfo, setOneDriveMountInfo] = useState<any>(null)
   const { token } = useAuth()
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
@@ -107,10 +108,56 @@ export function FileManager() {
           setR2MountInfo(null)
         }
 
-        // OneDrive 功能暂时禁用
-        // 尝试获取 OneDrive 挂载内容 - 功能开发中，敬请期待
+        // 尝试获取 OneDrive 挂载内容
+        try {
+          const onedriveResponse = await fetch(`${API_URL}/folders/${selectedFolderId}/onedrive-contents`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          })
+
+          if (onedriveResponse.ok) {
+            const onedriveData = await onedriveResponse.json()
+            // 合并 OneDrive 文件到文件列表
+            allFiles = [...allFiles, ...(onedriveData.files || [])]
+            
+            // 将 OneDrive 子目录转换为虚拟文件夹条目
+            const onedriveFolderItems = (onedriveData.folders || []).map((folder: {
+              id: string,
+              name: string,
+              path: string,
+              mountPointId: string,
+              itemCount?: number
+            }) => ({
+              id: folder.id,
+              filename: folder.name,
+              originalName: folder.name,
+              size: 0,
+              mimeType: "application/directory",
+              storageType: "onedrive",
+              createdAt: Date.now(),
+              isOneDriveFolder: true, // 标记为 OneDrive 文件夹
+              oneDrivePath: folder.path,
+              mountPointId: folder.mountPointId,
+              itemCount: folder.itemCount || 0 // 添加项目计数
+            }));
+            
+            // 合并 OneDrive 文件夹到文件列表
+            allFiles = [...allFiles, ...onedriveFolderItems];
+            
+            // 保存 OneDrive 挂载信息
+            setOneDriveMountInfo(onedriveData.mountPoint)
+          } else {
+            setOneDriveMountInfo(null)
+          }
+        } catch (onedriveError) {
+          // OneDrive 挂载内容获取失败不影响常规文件显示
+          console.log("No OneDrive mount or failed to fetch OneDrive contents:", onedriveError)
+          setOneDriveMountInfo(null)
+        }
       } else {
         setR2MountInfo(null)
+        setOneDriveMountInfo(null)
       }
 
       setFiles(allFiles)
@@ -219,10 +266,62 @@ export function FileManager() {
           });
       }
     } else if (isOneDriveFolder && oneDrivePath && mountPointId) {
-      // OneDrive 功能暂时禁用 - 敬请期待
-      console.log("OneDrive 功能暂时禁用，敬请期待后续版本更新")
-      // 回退到普通文件夹导航
-      handleFolderSelect(folderId);
+      // 这是一个OneDrive文件夹，需要特殊处理
+      console.log(`导航到OneDrive文件夹: ${oneDrivePath}`)
+      
+      // 保持在当前选中的文件夹中，但更新 OneDrive 路径
+      setLoading(true);
+      
+      // 以AJAX方式获取指定OneDrive路径的内容
+      if (token && selectedFolderId) {
+        // 使用查询参数来传递OneDrive路径
+        const queryParams = new URLSearchParams({ oneDrivePath });
+        
+        fetch(`${API_URL}/folders/${selectedFolderId}/onedrive-contents?${queryParams}`, {
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        })
+          .then(response => response.json())
+          .then(data => {
+            // 更新文件列表，包括文件和文件夹
+            let allFiles: FileItem[] = [];
+            
+            // 添加OneDrive文件
+            allFiles = [...allFiles, ...(data.files || [])];
+            
+            // 将OneDrive文件夹转换为条目
+            const onedriveFolderItems = (data.folders || []).map((folder: any) => ({
+              id: folder.id,
+              filename: folder.name,
+              originalName: folder.name,
+              size: 0,
+              mimeType: "application/directory",
+              storageType: "onedrive",
+              createdAt: Date.now(),
+              isOneDriveFolder: true,
+              oneDrivePath: folder.path,
+              mountPointId: folder.mountPointId,
+              itemCount: folder.itemCount || 0
+            }));
+            
+            allFiles = [...allFiles, ...onedriveFolderItems];
+            
+            // 更新文件列表
+            setFiles(allFiles);
+            setOneDriveMountInfo({
+              ...data.mountPoint,
+              currentOneDrivePath: oneDrivePath
+            });
+            setLoading(false);
+          })
+          .catch(error => {
+            console.error("Failed to navigate to OneDrive folder:", error);
+            setLoading(false);
+            // 刷新整个列表作为回退方案
+            setRefreshTrigger(prev => prev + 1);
+          });
+      }
     } else {
       // 普通文件夹导航
       handleFolderSelect(folderId);
@@ -280,6 +379,59 @@ export function FileManager() {
       })
       .catch(error => {
         console.error("Failed to navigate to R2 path:", error)
+        setLoading(false)
+        // 刷新整个列表作为回退方案
+        setRefreshTrigger(prev => prev + 1)
+      })
+  }
+
+  // 处理OneDrive路径导航
+  const handleOneDriveNavigate = (oneDrivePath: string) => {
+    if (!oneDriveMountInfo) return
+
+    setLoading(true)
+
+    // 调用OneDrive文件夹导航API
+    fetch(`${API_URL}/folders/onedrive?folderId=${selectedFolderId}&oneDrivePath=${encodeURIComponent(oneDrivePath)}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+      .then(response => response.json())
+      .then(data => {
+        // 更新文件列表，包括文件和文件夹
+        let allFiles: FileItem[] = []
+
+        // 添加OneDrive文件
+        allFiles = [...allFiles, ...(data.files || [])]
+
+        // 将OneDrive文件夹转换为条目
+        const onedriveFolderItems = (data.folders || []).map((folder: any) => ({
+          id: folder.id,
+          filename: folder.name,
+          originalName: folder.name,
+          size: 0,
+          mimeType: "application/directory",
+          storageType: "onedrive",
+          createdAt: Date.now(),
+          isOneDriveFolder: true,
+          oneDrivePath: folder.path,
+          mountPointId: folder.mountPointId,
+          itemCount: folder.itemCount || 0
+        }))
+
+        allFiles = [...allFiles, ...onedriveFolderItems]
+
+        // 更新文件列表和OneDrive挂载信息
+        setFiles(allFiles)
+        setOneDriveMountInfo({
+          ...data.mountPoint,
+          currentOneDrivePath: oneDrivePath
+        })
+        setLoading(false)
+      })
+      .catch(error => {
+        console.error("Failed to navigate to OneDrive path:", error)
         setLoading(false)
         // 刷新整个列表作为回退方案
         setRefreshTrigger(prev => prev + 1)
@@ -346,6 +498,8 @@ export function FileManager() {
                                 onFolderSelect={handleFolderSelect}
                                 r2MountInfo={r2MountInfo}
                                 onR2Navigate={handleR2Navigate}
+                                oneDriveMountInfo={oneDriveMountInfo}
+                                onOneDriveNavigate={handleOneDriveNavigate}
                               />
                             </div>
                             {r2MountInfo && (
@@ -355,6 +509,16 @@ export function FileManager() {
                                   <span className="hidden sm:inline">R2 挂载: {r2MountInfo.mountName} → </span>
                                   <span className="sm:hidden">R2: </span>
                                   {r2MountInfo.r2Path || "/"}
+                                </span>
+                              </div>
+                            )}
+                            {oneDriveMountInfo && (
+                              <div className="flex items-center gap-2 text-xs md:text-sm">
+                                <Cloud className="h-3 w-3 md:h-4 md:w-4 text-blue-500" />
+                                <span className="text-blue-600 truncate">
+                                  <span className="hidden sm:inline">OneDrive 挂载: {oneDriveMountInfo.mountName} → </span>
+                                  <span className="sm:hidden">OneDrive: </span>
+                                  {oneDriveMountInfo.oneDrivePath || "/"}
                                 </span>
                               </div>
                             )}
@@ -403,6 +567,7 @@ export function FileManager() {
                       onUploadSuccess={handleUploadSuccess}
                       currentFolderId={selectedFolderId}
                       r2MountInfo={r2MountInfo}
+                      oneDriveMountInfo={oneDriveMountInfo}
                     />
                   </CardContent>
                 </Card>

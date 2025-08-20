@@ -421,7 +421,7 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
   }
 
   return (
-    <div className="space-y-2 md:space-y-3">
+    <div className="h-[60vh] overflow-y-auto space-y-2 md:space-y-3 pr-2">
       {sortedFiles.map((file) => (
         <Card key={file.id}>
           <CardContent className="p-3 md:p-4">

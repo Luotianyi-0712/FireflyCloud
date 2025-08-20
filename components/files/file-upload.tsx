@@ -17,10 +17,19 @@ interface R2MountInfo {
   currentR2Path?: string
 }
 
+interface OneDriveMountInfo {
+  id: string
+  mountName: string
+  oneDrivePath: string
+  folderId: string
+  currentOneDrivePath?: string
+}
+
 interface FileUploadProps {
   onUploadSuccess: () => void
   currentFolderId?: string | null
   r2MountInfo?: R2MountInfo | null
+  oneDriveMountInfo?: OneDriveMountInfo | null
 }
 
 interface UploadFile {
@@ -30,7 +39,7 @@ interface UploadFile {
   error?: string
 }
 
-export function FileUpload({ onUploadSuccess, currentFolderId, r2MountInfo }: FileUploadProps) {
+export function FileUpload({ onUploadSuccess, currentFolderId, r2MountInfo, oneDriveMountInfo }: FileUploadProps) {
   const [uploadFiles, setUploadFiles] = useState<UploadFile[]>([])
   const [error, setError] = useState("")
   const { token } = useAuth()
@@ -75,6 +84,11 @@ export function FileUpload({ onUploadSuccess, currentFolderId, r2MountInfo }: Fi
       // 添加当前R2路径到表单数据
       if (r2MountInfo?.currentR2Path) {
         formData.append("currentR2Path", r2MountInfo.currentR2Path)
+      }
+
+      // 添加当前OneDrive路径到表单数据
+      if (oneDriveMountInfo?.currentOneDrivePath) {
+        formData.append("currentOneDrivePath", oneDriveMountInfo.currentOneDrivePath)
       }
 
       const response = await fetch(`${API_URL}/files/upload`, {

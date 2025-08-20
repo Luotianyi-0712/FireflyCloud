@@ -261,13 +261,41 @@ export function OneDriveMountManagement() {
 		await fetchWebDavContents(browsingMount.id, parent)
 	}
 
-	const makeDownloadUrl = (filePath: string, name: string) => {
-		if (!browsingMount) return "#"
-		const base = (browsingMount.oneDrivePath || "").replace(/^\/+|\/+$/g, "")
-		let rel = filePath.replace(/^\/+/, "")
-		if (base && rel.startsWith(base + "/")) rel = rel.slice(base.length + 1)
-		const params = new URLSearchParams({ mountId: browsingMount.id, path: rel, filename: name })
-		return `${API_URL}/storage/onedrive/webdav/download?${params.toString()}`
+	const handleDownload = async (filePath: string, name: string) => {
+		if (!browsingMount || !token) return
+		
+		try {
+			const base = (browsingMount.oneDrivePath || "").replace(/^\/+|\/+$/g, "")
+			let rel = filePath.replace(/^\/+/, "")
+			if (base && rel.startsWith(base + "/")) rel = rel.slice(base.length + 1)
+			
+			const params = new URLSearchParams({ mountId: browsingMount.id, path: rel, filename: name })
+			const response = await fetch(`${API_URL}/storage/onedrive/webdav/download?${params.toString()}`, {
+				headers: {
+					Authorization: `Bearer ${token}`,
+				},
+			})
+
+			if (response.ok) {
+				// 创建下载链接
+				const blob = await response.blob()
+				const url = window.URL.createObjectURL(blob)
+				const a = document.createElement('a')
+				a.style.display = 'none'
+				a.href = url
+				a.download = name
+				document.body.appendChild(a)
+				a.click()
+				window.URL.revokeObjectURL(url)
+				document.body.removeChild(a)
+			} else {
+				const errorData = await response.json().catch(() => ({}))
+				toast.error("下载失败", { description: errorData.error || '未知错误' })
+			}
+		} catch (error) {
+			console.error("Download failed:", error)
+			toast.error("下载失败", { description: "网络错误" })
+		}
 	}
 
 	if (loading) {
@@ -553,15 +581,15 @@ export function OneDriveMountManagement() {
 														<FileText className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
 														<span className="truncate">{f.name}</span>
 													</div>
-													<a
-														className="text-xs inline-flex items-center gap-1 underline ml-2 flex-shrink-0"
-														href={makeDownloadUrl(f.path, f.name)}
-														target="_blank"
-														rel="noreferrer"
+													<Button
+														variant="ghost"
+														size="sm"
+														className="text-xs h-6 px-2 ml-2 flex-shrink-0"
+														onClick={() => handleDownload(f.path, f.name)}
 													>
-														<Download className="h-3 w-3" /> 
+														<Download className="h-3 w-3 mr-1" /> 
 														<span className="hidden sm:inline">下载</span>
-													</a>
+													</Button>
 												</div>
 											))}
 										</div>

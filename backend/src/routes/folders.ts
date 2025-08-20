@@ -392,16 +392,16 @@ export const folderRoutes = new Elysia({ prefix: "/folders" })
       // 使用存储服务获取 R2 内容
       const storageService = new StorageService(config)
       // 使用查询参数中的r2Path覆盖挂载点路径，用于导航到子目录
-      const r2Path = query.r2Path || mountPoint.r2Path
-      const r2Contents = await storageService.listR2Objects(r2Path)
+      const targetR2Path = r2Path || mountPoint.r2Path
+      const r2Contents = await storageService.listR2Objects(targetR2Path)
 
               // 转换为文件夹和文件格式
       const r2Folders = r2Contents.folders.map(folderPath => {
         // 处理文件夹名称
         let folderName = ""
-        if (r2Path) {
+        if (targetR2Path) {
           // 如果当前路径有值，去掉前缀
-          folderName = folderPath.replace(r2Path, "").replace(/\/$/, "").split("/").pop() || ""
+          folderName = folderPath.replace(targetR2Path, "").replace(/\/$/, "").split("/").pop() || ""
         } else {
           // 根路径挂载时，直接获取最后一个部分
           folderName = folderPath.replace(/\/$/, "").split("/").pop() || ""
@@ -425,9 +425,9 @@ export const folderRoutes = new Elysia({ prefix: "/folders" })
       const r2Files = r2Contents.files.map(file => {
         // 正确处理根路径和子目录的文件名
         let fileName = ""
-        if (r2Path) {
+        if (targetR2Path) {
           // 有路径的情况
-          fileName = file.key.replace(r2Path, "").split("/").pop() || ""
+          fileName = file.key.replace(targetR2Path, "").split("/").pop() || ""
         } else {
           // 根路径的情况
           fileName = file.key.split("/").pop() || ""
@@ -494,12 +494,103 @@ export const folderRoutes = new Elysia({ prefix: "/folders" })
         return { error: "No OneDrive mount point found for this folder" }
       }
 
-      // 获取用户的OneDrive认证信息
+      // 获取存储配置，检查是否配置了WebDAV或OAuth
+      const storageConfiguration = await db.select().from(storageConfig).get()
+      if (!storageConfiguration) {
+        set.status = 400
+        return { error: "OneDrive not configured" }
+      }
+
+      // 检查是否配置了WebDAV
+      const hasWebDAV = storageConfiguration.oneDriveWebDavUrl && storageConfiguration.oneDriveWebDavUser && storageConfiguration.oneDriveWebDavPass
+      
+      // 获取用户的OneDrive认证信息（OAuth模式）
       const auth = await db
         .select()
         .from(oneDriveAuth)
         .where(eq(oneDriveAuth.userId, user.userId))
         .get()
+
+      // 如果既没有OAuth认证也没有WebDAV配置，返回错误
+      if (!auth && !hasWebDAV) {
+        set.status = 400
+        return { error: "OneDrive not authenticated and WebDAV not configured" }
+      }
+
+      // 确定要列出的路径
+      const targetOnedrivePath = oneDrivePath || mountPoint.oneDrivePath
+
+      // 如果有WebDAV配置，优先使用WebDAV模式
+      if (hasWebDAV) {
+        try {
+          logger.info(`OneDrive挂载点 ${mountPoint.id} 使用WebDAV模式获取内容: ${targetOnedrivePath}`)
+          
+          // 动态引入 webdav 客户端
+          const { createClient } = await import("webdav")
+          const client = createClient(storageConfiguration.oneDriveWebDavUrl!, {
+            username: storageConfiguration.oneDriveWebDavUser!,
+            password: storageConfiguration.oneDriveWebDavPass!,
+          })
+
+          // 获取目录内容
+          const contents = await client.getDirectoryContents(targetOnedrivePath) as any[]
+
+          // 分离文件和文件夹
+          const webdavFolders = contents
+            .filter(item => item.type === "directory")
+            .map(item => ({
+              id: `webdav-${Buffer.from(item.filename).toString('base64')}`,
+              name: item.basename,
+              path: item.filename,
+              mountPointId: mountPoint.id,
+              itemCount: 0, // WebDAV 不提供子项计数
+              createdAt: new Date(item.lastmod).getTime(),
+              lastModified: new Date(item.lastmod).getTime(),
+            }))
+
+          const webdavFiles = contents
+            .filter(item => item.type === "file")
+            .map(item => ({
+              id: `webdav-${Buffer.from(item.filename).toString('base64')}`,
+              userId: user.userId,
+              folderId: folderId,
+              filename: item.basename,
+              originalName: item.basename,
+              size: item.size || 0,
+              mimeType: item.mime || "application/octet-stream",
+              storageType: "onedrive",
+              storagePath: item.filename, // 使用WebDAV路径作为存储路径
+              createdAt: new Date(item.lastmod).getTime(),
+              lastModified: new Date(item.lastmod).getTime(),
+            }))
+
+          logger.info(`WebDAV获取成功: ${webdavFolders.length} 个文件夹, ${webdavFiles.length} 个文件`)
+
+          return {
+            folders: webdavFolders,
+            files: webdavFiles,
+            mountPoint: {
+              id: mountPoint.id,
+              oneDrivePath: targetOnedrivePath,
+              mountName: mountPoint.mountName,
+              originalMountPath: mountPoint.oneDrivePath,
+            }
+          }
+        } catch (webdavError) {
+          logger.error("WebDAV获取OneDrive内容失败:", webdavError)
+          // WebDAV失败时返回空列表，而不是抛出错误
+          return {
+            folders: [],
+            files: [],
+            mountPoint: {
+              id: mountPoint.id,
+              oneDrivePath: targetOnedrivePath,
+              mountName: mountPoint.mountName,
+              originalMountPath: mountPoint.oneDrivePath,
+            }
+          }
+        }
+      }
 
       if (!auth) {
         set.status = 400
@@ -509,20 +600,19 @@ export const folderRoutes = new Elysia({ prefix: "/folders" })
       // 检查访问令牌是否过期
       if (auth.expiresAt <= Date.now()) {
         // 尝试刷新令牌
-        const config = await db.select().from(storageConfig).get()
-        if (!config || !config.oneDriveClientId) {
+        if (!storageConfiguration.oneDriveClientId) {
           set.status = 400
-          return { error: "OneDrive not configured" }
+          return { error: "OneDrive OAuth not configured" }
         }
 
-        const oneDriveService = new OneDriveService({
-          clientId: config.oneDriveClientId,
-          clientSecret: config.oneDriveClientSecret || "",
-          tenantId: config.oneDriveTenantId || "common",
+        const refreshOneDriveService = new OneDriveService({
+          clientId: storageConfiguration.oneDriveClientId,
+          clientSecret: storageConfiguration.oneDriveClientSecret || "",
+          tenantId: storageConfiguration.oneDriveTenantId || "common",
         })
 
         try {
-          const newTokens = await oneDriveService.refreshToken(auth.refreshToken)
+          const newTokens = await refreshOneDriveService.refreshToken(auth.refreshToken)
 
           // 更新数据库中的令牌
           await db
@@ -544,32 +634,22 @@ export const folderRoutes = new Elysia({ prefix: "/folders" })
         }
       }
 
-      // 获取存储配置
-      const config = await db.select().from(storageConfig).get()
-      if (!config || !config.oneDriveClientId) {
-        set.status = 400
-        return { error: "OneDrive not configured" }
-      }
-
       const oneDriveService = new OneDriveService({
-        clientId: config.oneDriveClientId,
-        clientSecret: config.oneDriveClientSecret || "",
-        tenantId: config.oneDriveTenantId || "common",
+        clientId: storageConfiguration.oneDriveClientId!,
+        clientSecret: storageConfiguration.oneDriveClientSecret || "",
+        tenantId: storageConfiguration.oneDriveTenantId || "common",
       })
 
       oneDriveService.setAccessToken(auth.accessToken)
 
-      // 确定要列出的路径
-      const targetPath = oneDrivePath || mountPoint.oneDrivePath
-
       let items: any[] = []
 
-      if (mountPoint.oneDriveItemId && targetPath === mountPoint.oneDrivePath) {
+      if (mountPoint.oneDriveItemId && targetOnedrivePath === mountPoint.oneDrivePath) {
         // 如果有itemId且是挂载点根路径，使用itemId获取内容
         items = await oneDriveService.listItemsById(mountPoint.oneDriveItemId)
       } else {
         // 否则使用路径获取内容
-        items = await oneDriveService.listItems(targetPath)
+        items = await oneDriveService.listItems(targetOnedrivePath)
       }
 
       // 分离文件和文件夹
@@ -578,7 +658,7 @@ export const folderRoutes = new Elysia({ prefix: "/folders" })
         .map(item => ({
           id: item.id,
           name: item.name,
-          path: targetPath === "/" ? `/${item.name}` : `${targetPath}/${item.name}`,
+          path: targetOnedrivePath === "/" ? `/${item.name}` : `${targetOnedrivePath}/${item.name}`,
           mountPointId: mountPoint.id,
           itemCount: item.folder?.childCount || 0,
           createdAt: new Date(item.createdDateTime).getTime(),
@@ -609,7 +689,7 @@ export const folderRoutes = new Elysia({ prefix: "/folders" })
         files: oneDriveFiles,
         mountPoint: {
           id: mountPoint.id,
-          oneDrivePath: targetPath,
+          oneDrivePath: targetOnedrivePath,
           mountName: mountPoint.mountName,
           originalMountPath: mountPoint.oneDrivePath,
         }
