@@ -421,12 +421,12 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2 md:space-y-3">
       {sortedFiles.map((file) => (
         <Card key={file.id}>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4 flex-1 min-w-0">
+          <CardContent className="p-3 md:p-4">
+            <div className="flex items-start md:items-center justify-between gap-2">
+              <div className="flex items-start md:items-center gap-2 md:gap-4 flex-1 min-w-0">
                 <div 
                   className={file.isR2Folder || file.mimeType === "application/directory" ? "cursor-pointer" : ""}
                   onClick={() => {
@@ -444,36 +444,42 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    {file.isR2Folder || file.mimeType === "application/directory" ? (
-                      <h4 
-                        className="font-medium truncate cursor-pointer hover:text-blue-600 hover:underline" 
-                        onClick={() => handleFolderClick(file)}
-                      >
-                        {file.originalName}
-                      </h4>
-                    ) : (
-                      <h4 
-                        className="font-medium truncate cursor-pointer hover:text-blue-600 hover:underline" 
-                        onClick={() => handleFilePreview(file)}
-                      >
-                        {file.originalName}
-                      </h4>
-                    )}
-                    {(file.isR2File || file.isR2Folder) && (
-                      <Badge variant="secondary" className="text-xs flex items-center gap-1">
-                        <Cloud className="h-3 w-3" />
-                        R2 {file.isR2Folder ? "目录" : ""}
-                      </Badge>
-                    )}
-                    {(file.isOneDriveFile || file.isOneDriveFolder) && (
-                      <Badge variant="secondary" className="text-xs flex items-center gap-1 bg-blue-100 text-blue-800">
-                        <Cloud className="h-3 w-3" />
-                        OneDrive {file.isOneDriveFolder ? "目录" : ""}
-                      </Badge>
-                    )}
+                  <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {file.isR2Folder || file.mimeType === "application/directory" ? (
+                        <h4 
+                          className="font-medium truncate cursor-pointer hover:text-blue-600 hover:underline text-sm md:text-base" 
+                          onClick={() => handleFolderClick(file)}
+                        >
+                          {file.originalName}
+                        </h4>
+                      ) : (
+                        <h4 
+                          className="font-medium truncate cursor-pointer hover:text-blue-600 hover:underline text-sm md:text-base" 
+                          onClick={() => handleFilePreview(file)}
+                        >
+                          {file.originalName}
+                        </h4>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {(file.isR2File || file.isR2Folder) && (
+                        <Badge variant="secondary" className="text-xs flex items-center gap-1">
+                          <Cloud className="h-3 w-3" />
+                          <span className="hidden sm:inline">R2</span>
+                          {file.isR2Folder && <span className="hidden sm:inline">目录</span>}
+                        </Badge>
+                      )}
+                      {(file.isOneDriveFile || file.isOneDriveFolder) && (
+                        <Badge variant="secondary" className="text-xs flex items-center gap-1 bg-blue-100 text-blue-800">
+                          <Cloud className="h-3 w-3" />
+                          <span className="hidden sm:inline">OneDrive</span>
+                          {file.isOneDriveFolder && <span className="hidden sm:inline">目录</span>}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 text-xs sm:text-sm text-muted-foreground mt-1">
                     <span>
                       {file.isR2Folder || file.mimeType === "application/directory" 
                         ? `${file.itemCount || 1}个项目` 
@@ -482,10 +488,18 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
                     </span>
                     <div className="flex items-center gap-1">
                       <Calendar className="h-3 w-3" />
-                      {file.isR2File && file.lastModified
-                        ? formatDate(new Date(file.lastModified).getTime())
-                        : formatDate(file.createdAt)
-                      }
+                      <span className="hidden sm:inline">
+                        {file.isR2File && file.lastModified
+                          ? formatDate(new Date(file.lastModified).getTime())
+                          : formatDate(file.createdAt)
+                        }
+                      </span>
+                      <span className="sm:hidden">
+                        {file.isR2File && file.lastModified
+                          ? new Date(file.lastModified).toLocaleDateString("zh-CN")
+                          : new Date(file.createdAt).toLocaleDateString("zh-CN")
+                        }
+                      </span>
                     </div>
                     <div className="flex items-center gap-1">
                       {file.isR2File || file.isOneDriveFile ? (
@@ -501,59 +515,99 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" className="h-8 w-8 p-0">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => handleGetDirectLink(file.id, file.originalName)}>
-                      <Link className="h-4 w-4 mr-2" />
-                      获取直链
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleShare(file.id, file.originalName)}>
-                      <Share2 className="h-4 w-4 mr-2" />
-                      分享文件
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleDownload(file.id, file.originalName, file)}
-                  className="flex items-center gap-1"
-                >
-                  <Download className="h-4 w-4" />
-                  下载
-                </Button>
-
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700 bg-transparent">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>删除文件</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        您确定要删除 "{file.originalName}" 吗？此操作无法撤销。
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>取消</AlertDialogCancel>
-                      <AlertDialogAction
+              <div className="flex flex-col md:flex-row items-end md:items-center gap-1 md:gap-2 shrink-0">
+                {/* 移动端：只显示下载按钮和更多操作 */}
+                <div className="md:hidden flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDownload(file.id, file.originalName, file)}
+                    className="flex items-center gap-1 h-8 px-2"
+                  >
+                    <Download className="h-3 w-3" />
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-8 w-8 p-0">
+                        <MoreHorizontal className="h-3 w-3" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuItem onClick={() => handleGetDirectLink(file.id, file.originalName)}>
+                        <Link className="h-4 w-4 mr-2" />
+                        获取直链
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleShare(file.id, file.originalName)}>
+                        <Share2 className="h-4 w-4 mr-2" />
+                        分享文件
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
                         onClick={() => handleDelete(file.id)}
+                        className="text-red-600 focus:text-red-600"
                         disabled={deletingId === file.id}
-                        className="bg-red-600 hover:bg-red-700"
                       >
+                        <Trash2 className="h-4 w-4 mr-2" />
                         {deletingId === file.id ? "删除中..." : "删除"}
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+
+                {/* 桌面端：显示所有按钮 */}
+                <div className="hidden md:flex items-center gap-2">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-8 w-8 p-0">
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => handleGetDirectLink(file.id, file.originalName)}>
+                        <Link className="h-4 w-4 mr-2" />
+                        获取直链
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleShare(file.id, file.originalName)}>
+                        <Share2 className="h-4 w-4 mr-2" />
+                        分享文件
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDownload(file.id, file.originalName, file)}
+                    className="flex items-center gap-1"
+                  >
+                    <Download className="h-4 w-4" />
+                    下载
+                  </Button>
+
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700 bg-transparent">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>删除文件</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          您确定要删除 "{file.originalName}" 吗？此操作无法撤销。
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>取消</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => handleDelete(file.id)}
+                          disabled={deletingId === file.id}
+                          className="bg-red-600 hover:bg-red-700"
+                        >
+                          {deletingId === file.id ? "删除中..." : "删除"}
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
               </div>
             </div>
           </CardContent>

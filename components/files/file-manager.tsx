@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Upload, Files, FolderOpen, RefreshCw, Cloud } from "lucide-react"
+import { MobileQuotaBar } from "./mobile-quota-bar"
 
 interface FileItem {
   id: string
@@ -294,106 +295,125 @@ export function FileManager() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* 文件夹树和配额显示 */}
-        <div className="lg:col-span-1 space-y-4">
-          <FolderTree
-            selectedFolderId={selectedFolderId}
-            onFolderSelect={handleFolderSelect}
-            onRefresh={handleRefresh}
-          />
-          <QuotaDisplay />
-        </div>
+    <>
+      <div className="space-y-4 md:space-y-6 pb-16 md:pb-0">
+        <div className="flex flex-col lg:grid lg:grid-cols-4 gap-4 lg:gap-6">
+          {/* 文件夹树和配额显示 - 移动端优化 */}
+          <div className="lg:col-span-1 space-y-4">
+            <div className="block">
+              <FolderTree
+                selectedFolderId={selectedFolderId}
+                onFolderSelect={handleFolderSelect}
+                onRefresh={handleRefresh}
+              />
+            </div>
+            <div className="hidden md:block">
+              <QuotaDisplay />
+            </div>
+          </div>
 
-        {/* 主内容区域 */}
-        <div className="lg:col-span-3">
-          <Tabs defaultValue="files" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="files" className="flex items-center gap-2">
-                <Files className="h-4 w-4" />
-                文件 ({files.length})
-              </TabsTrigger>
-              <TabsTrigger value="upload" className="flex items-center gap-2">
-                <Upload className="h-4 w-4" />
-                上传文件
-              </TabsTrigger>
-            </TabsList>
+          {/* 主内容区域 */}
+          <div className="lg:col-span-3">
+            <Tabs defaultValue="files" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="files" className="flex items-center gap-1 md:gap-2 text-xs md:text-sm">
+                  <Files className="h-3 w-3 md:h-4 md:w-4" />
+                  <span className="hidden sm:inline">文件 ({files.length})</span>
+                  <span className="sm:hidden">文件</span>
+                </TabsTrigger>
+                <TabsTrigger value="upload" className="flex items-center gap-1 md:gap-2 text-xs md:text-sm">
+                  <Upload className="h-3 w-3 md:h-4 md:w-4" />
+                  <span className="hidden sm:inline">上传文件</span>
+                  <span className="sm:hidden">上传</span>
+                </TabsTrigger>
+              </TabsList>
 
-            <TabsContent value="files" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle className="flex items-center gap-2">
-                        <FolderOpen className="h-5 w-5" />
-                        文件管理
-                      </CardTitle>
-                      <CardDescription>
-                        <div className="space-y-2">
+              <TabsContent value="files" className="space-y-4">
+                <Card>
+                  <CardHeader className="pb-3">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                          <FolderOpen className="h-4 w-4 md:h-5 md:w-5" />
+                          <span className="hidden sm:inline">文件管理</span>
+                          <span className="sm:hidden">文件</span>
+                        </CardTitle>
+                        <CardDescription className="mt-1">
+                          <div className="space-y-1 md:space-y-2">
+                            <div className="overflow-hidden">
+                              <FolderBreadcrumb
+                                currentFolderId={selectedFolderId}
+                                onFolderSelect={handleFolderSelect}
+                                r2MountInfo={r2MountInfo}
+                                onR2Navigate={handleR2Navigate}
+                              />
+                            </div>
+                            {r2MountInfo && (
+                              <div className="flex items-center gap-2 text-xs md:text-sm">
+                                <Cloud className="h-3 w-3 md:h-4 md:w-4 text-purple-500" />
+                                <span className="text-purple-600 truncate">
+                                  <span className="hidden sm:inline">R2 挂载: {r2MountInfo.mountName} → </span>
+                                  <span className="sm:hidden">R2: </span>
+                                  {r2MountInfo.r2Path || "/"}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </CardDescription>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleRefresh}
+                        className="shrink-0"
+                      >
+                        <RefreshCw className="h-3 w-3 md:h-4 md:w-4 md:mr-2" />
+                        <span className="hidden md:inline">刷新</span>
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="px-3 md:px-6">
+                    <FileList 
+                      files={files} 
+                      onDeleteSuccess={handleDeleteSuccess}
+                      onFolderNavigate={handleFolderNavigate}
+                    />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="upload" className="space-y-4">
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base md:text-lg">上传文件</CardTitle>
+                    <CardDescription className="text-sm">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-1">
+                        <span>上传文件到</span>
+                        <div className="overflow-hidden flex-1">
                           <FolderBreadcrumb
                             currentFolderId={selectedFolderId}
                             onFolderSelect={handleFolderSelect}
-                            r2MountInfo={r2MountInfo}
-                            onR2Navigate={handleR2Navigate}
                           />
-                          {r2MountInfo && (
-                            <div className="flex items-center gap-2 text-sm">
-                              <Cloud className="h-4 w-4 text-purple-500" />
-                              <span className="text-purple-600">
-                                R2 挂载: {r2MountInfo.mountName} → {r2MountInfo.r2Path || "/"}
-                              </span>
-                            </div>
-                          )}
                         </div>
-                      </CardDescription>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleRefresh}
-                    >
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                      刷新
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <FileList 
-                    files={files} 
-                    onDeleteSuccess={handleDeleteSuccess}
-                    onFolderNavigate={handleFolderNavigate}
-                  />
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="upload" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>上传文件</CardTitle>
-                  <CardDescription>
-                    上传文件到
-                    <FolderBreadcrumb
+                      </div>
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="px-3 md:px-6">
+                    <FileUpload
+                      onUploadSuccess={handleUploadSuccess}
                       currentFolderId={selectedFolderId}
-                      onFolderSelect={handleFolderSelect}
+                      r2MountInfo={r2MountInfo}
                     />
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <FileUpload
-                    onUploadSuccess={handleUploadSuccess}
-                    currentFolderId={selectedFolderId}
-                    r2MountInfo={r2MountInfo}
-                  />
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-
-          </Tabs>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
+          </div>
         </div>
       </div>
-    </div>
+      
+      {/* 移动端配额显示条 */}
+      <MobileQuotaBar />
+    </>
   )
 }

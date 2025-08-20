@@ -53,6 +53,10 @@ export const storageConfig = sqliteTable("storage_config", {
   oneDriveClientId: text("onedrive_client_id"),
   oneDriveClientSecret: text("onedrive_client_secret"),
   oneDriveTenantId: text("onedrive_tenant_id"),
+  // OneDrive WebDAV 配置字段
+  oneDriveWebDavUrl: text("onedrive_webdav_url"),
+  oneDriveWebDavUser: text("onedrive_webdav_user"),
+  oneDriveWebDavPass: text("onedrive_webdav_pass"),
   // 新增字段支持混合模式
   enableMixedMode: integer("enable_mixed_mode", { mode: "boolean" }).notNull().default(false),
   updatedAt: integer("updated_at").notNull(),

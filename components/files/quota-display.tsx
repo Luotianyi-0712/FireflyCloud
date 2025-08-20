@@ -105,38 +105,39 @@ export function QuotaDisplay() {
 
   return (
     <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <HardDrive className="h-4 w-4" />
-            存储使用情况
+      <CardHeader className="pb-2 md:pb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <CardTitle className="text-xs md:text-sm font-medium flex items-center gap-1 md:gap-2">
+            <HardDrive className="h-3 w-3 md:h-4 md:w-4" />
+            <span className="hidden sm:inline">存储使用情况</span>
+            <span className="sm:hidden">存储</span>
           </CardTitle>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 md:gap-2">
             {user?.role === "admin" ? (
-              <Crown className="h-4 w-4 text-yellow-500" />
+              <Crown className="h-3 w-3 md:h-4 md:w-4 text-yellow-500" />
             ) : (
-              <User className="h-4 w-4 text-blue-500" />
+              <User className="h-3 w-3 md:h-4 md:w-4 text-blue-500" />
             )}
-            <Badge variant={user?.role === "admin" ? "default" : "secondary"}>
+            <Badge variant={user?.role === "admin" ? "default" : "secondary"} className="text-xs">
               {user?.role === "admin" ? "管理员" : "用户"}
             </Badge>
           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3 md:space-y-4 px-3 md:px-6">
         {/* 使用情况概览 */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-sm">
+        <div className="space-y-1.5 md:space-y-2">
+          <div className="flex items-center justify-between text-xs md:text-sm">
             <span>已使用</span>
             <span className={`font-medium ${getUsageColor(quota.usagePercentage)}`}>
               {quota.usedStorageFormatted}
             </span>
           </div>
-          <div className="flex items-center justify-between text-sm">
+          <div className="flex items-center justify-between text-xs md:text-sm">
             <span>总容量</span>
             <span className="font-medium">{quota.maxStorageFormatted}</span>
           </div>
-          <div className="flex items-center justify-between text-sm">
+          <div className="flex items-center justify-between text-xs md:text-sm">
             <span>可用空间</span>
             <span className="font-medium text-muted-foreground">
               {quota.availableSpaceFormatted}
@@ -145,17 +146,17 @@ export function QuotaDisplay() {
         </div>
 
         {/* 进度条 */}
-        <div className="space-y-2">
+        <div className="space-y-1.5 md:space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">使用率</span>
-            <span className={`text-sm font-bold ${getUsageColor(quota.usagePercentage)}`}>
+            <span className="text-xs md:text-sm font-medium">使用率</span>
+            <span className={`text-xs md:text-sm font-bold ${getUsageColor(quota.usagePercentage)}`}>
               {quota.usagePercentage}%
             </span>
           </div>
           <div className="relative">
             <Progress 
               value={quota.usagePercentage} 
-              className="h-2"
+              className="h-1.5 md:h-2"
             />
             {quota.usagePercentage >= 90 && (
               <div className="absolute inset-0 bg-red-500 rounded-full opacity-75"></div>
@@ -165,32 +166,34 @@ export function QuotaDisplay() {
 
         {/* 状态提示 */}
         {quota.usagePercentage >= 95 && (
-          <Alert variant="destructive">
-            <AlertTriangle className="h-4 w-4" />
+          <Alert variant="destructive" className="py-2">
+            <AlertTriangle className="h-3 w-3 md:h-4 md:w-4" />
             <AlertDescription className="text-xs">
-              存储空间即将用完！请清理不需要的文件或联系管理员增加配额。
+              <span className="hidden sm:inline">存储空间即将用完！请清理不需要的文件或联系管理员增加配额。</span>
+              <span className="sm:hidden">存储空间不足！</span>
             </AlertDescription>
           </Alert>
         )}
 
         {quota.usagePercentage >= 85 && quota.usagePercentage < 95 && (
-          <Alert>
-            <AlertTriangle className="h-4 w-4" />
+          <Alert className="py-2">
+            <AlertTriangle className="h-3 w-3 md:h-4 md:w-4" />
             <AlertDescription className="text-xs">
-              存储空间使用率较高，建议及时清理文件。
+              <span className="hidden sm:inline">存储空间使用率较高，建议及时清理文件。</span>
+              <span className="sm:hidden">使用率较高</span>
             </AlertDescription>
           </Alert>
         )}
 
         {quota.usagePercentage < 50 && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1 md:gap-2 text-xs text-muted-foreground">
             <CheckCircle className="h-3 w-3 text-green-500" />
             <span>存储空间充足</span>
           </div>
         )}
 
-        {/* 详细信息 */}
-        <div className="pt-2 border-t">
+        {/* 详细信息 - 移动端隐藏 */}
+        <div className="hidden md:block pt-2 border-t">
           <div className="grid grid-cols-2 gap-4 text-xs text-muted-foreground">
             <div>
               <div className="font-medium">已用</div>

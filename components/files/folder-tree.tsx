@@ -276,46 +276,46 @@ export function FolderTree({ selectedFolderId, onFolderSelect, onRefresh }: Fold
         <ContextMenu>
           <ContextMenuTrigger>
             <div
-              className={`flex items-center gap-2 p-2 rounded cursor-pointer hover:bg-muted/50 ${
+              className={`flex items-center gap-1 md:gap-2 p-1.5 md:p-2 rounded cursor-pointer hover:bg-muted/50 ${
                 isSelected ? "bg-primary/10 border border-primary/20" : ""
               }`}
-              style={{ paddingLeft: `${level * 20 + 8}px` }}
+              style={{ paddingLeft: `${level * 16 + 6}px` }}
               onClick={() => debouncedFolderSelect(folder.id)}
             >
               {hasChildren && (
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-4 w-4 p-0"
+                  className="h-3 w-3 md:h-4 md:w-4 p-0"
                   onClick={(e) => {
                     e.stopPropagation()
                     toggleFolder(folder.id)
                   }}
                 >
                   {folder.isExpanded ? (
-                    <ChevronDown className="h-3 w-3" />
+                    <ChevronDown className="h-2.5 w-2.5 md:h-3 md:w-3" />
                   ) : (
-                    <ChevronRight className="h-3 w-3" />
+                    <ChevronRight className="h-2.5 w-2.5 md:h-3 md:w-3" />
                   )}
                 </Button>
               )}
-              {!hasChildren && <div className="w-4" />}
+              {!hasChildren && <div className="w-3 md:w-4" />}
               
               {folder.isR2Mount ? (
-                <div className="flex items-center gap-1">
-                  <Cloud className="h-4 w-4 text-purple-500" />
-                  <Link className="h-3 w-3 text-purple-500" />
+                <div className="flex items-center gap-0.5 md:gap-1">
+                  <Cloud className="h-3 w-3 md:h-4 md:w-4 text-purple-500" />
+                  <Link className="h-2.5 w-2.5 md:h-3 md:w-3 text-purple-500" />
                 </div>
               ) : folder.isExpanded ? (
-                <FolderOpen className="h-4 w-4 text-blue-500" />
+                <FolderOpen className="h-3 w-3 md:h-4 md:w-4 text-blue-500" />
               ) : (
-                <Folder className="h-4 w-4 text-blue-500" />
+                <Folder className="h-3 w-3 md:h-4 md:w-4 text-blue-500" />
               )}
 
-              <span className={`text-sm truncate ${folder.isR2Mount ? 'text-purple-600 font-medium' : ''}`}>
+              <span className={`text-xs md:text-sm truncate ${folder.isR2Mount ? 'text-purple-600 font-medium' : ''}`}>
                 {folder.name}
                 {folder.isR2Mount && (
-                  <span className="ml-1 text-xs text-purple-500">(R2)</span>
+                  <span className="ml-1 text-xs text-purple-500 hidden sm:inline">(R2)</span>
                 )}
               </span>
             </div>
@@ -374,9 +374,12 @@ export function FolderTree({ selectedFolderId, onFolderSelect, onRefresh }: Fold
 
   return (
     <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-medium">文件夹</h3>
+      <CardContent className="p-3 md:p-4">
+        <div className="flex items-center justify-between mb-3 md:mb-4">
+          <h3 className="font-medium text-sm md:text-base">
+            <span className="hidden sm:inline">文件夹</span>
+            <span className="sm:hidden">目录</span>
+          </h3>
           <Button
             variant="outline"
             size="sm"
@@ -384,9 +387,10 @@ export function FolderTree({ selectedFolderId, onFolderSelect, onRefresh }: Fold
               setParentFolderId(null)
               setCreateDialogOpen(true)
             }}
+            className="h-8 px-2 md:px-3"
           >
-            <FolderPlus className="h-4 w-4 mr-2" />
-            新建
+            <FolderPlus className="h-3 w-3 md:h-4 md:w-4 md:mr-2" />
+            <span className="hidden md:inline">新建</span>
           </Button>
         </div>
 

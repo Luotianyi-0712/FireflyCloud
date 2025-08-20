@@ -15,6 +15,7 @@ import { SmtpConfiguration } from "./smtp-configuration"
 import { R2MountManagement } from "./r2-mount-management"
 import { QuotaManagement } from "./quota-management"
 import { AdminSettings } from "./admin-settings"
+import { OneDriveMountManagement } from "./onedrive-mount-management"
 
 export function AdminDashboard() {
   const [stats, setStats] = useState<any>(null)
@@ -59,6 +60,12 @@ export function AdminDashboard() {
       label: "R2挂载",
       icon: Cloud,
       description: "管理所有用户的 Cloudflare R2 存储桶挂载点"
+    },
+    {
+      value: "onedrive-mounts",
+      label: "OneDrive挂载",
+      icon: Cloud,
+      description: "管理当前账户的 OneDrive 挂载点"
     },
     {
       value: "smtp",
@@ -163,7 +170,7 @@ export function AdminDashboard() {
           </div>
         ) : (
           /* 桌面端使用响应式网格 */
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-1 h-auto p-1 transition-all duration-200">
+          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-1 h-auto p-1 transition-all duration-200">
             {tabsConfig.map((tab) => {
               const Icon = tab.icon
               return (
@@ -225,6 +232,18 @@ export function AdminDashboard() {
             </CardHeader>
             <CardContent>
               {isTabLoaded("r2-mounts") && <R2MountManagement />}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="onedrive-mounts" className="space-y-4 animate-in fade-in-50 duration-300">
+          <Card>
+            <CardHeader>
+              <CardTitle>OneDrive 挂载点管理</CardTitle>
+              <CardDescription>管理当前账户的 OneDrive 挂载点</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isTabLoaded("onedrive-mounts") && <OneDriveMountManagement />}
             </CardContent>
           </Card>
         </TabsContent>

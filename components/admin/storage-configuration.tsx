@@ -20,8 +20,13 @@ interface StorageConfig {
   enableOneDrive: boolean
   r2Endpoint: string
   r2Bucket: string
+  r2AccessKey?: string
+  r2SecretKey?: string
   oneDriveClientId: string
   oneDriveTenantId: string
+  oneDriveWebDavUrl?: string
+  oneDriveWebDavUser?: string
+  oneDriveWebDavPass?: string
 }
 
 export function StorageConfiguration() {
@@ -31,8 +36,13 @@ export function StorageConfiguration() {
     enableOneDrive: false,
     r2Endpoint: "",
     r2Bucket: "",
+    r2AccessKey: "",
+    r2SecretKey: "",
     oneDriveClientId: "",
     oneDriveTenantId: "",
+    oneDriveWebDavUrl: "",
+    oneDriveWebDavUser: "",
+    oneDriveWebDavPass: "",
   })
   const [formData, setFormData] = useState({
     enableLocal: true,
@@ -45,6 +55,9 @@ export function StorageConfiguration() {
     oneDriveClientId: "",
     oneDriveClientSecret: "",
     oneDriveTenantId: "",
+    oneDriveWebDavUrl: "",
+    oneDriveWebDavUser: "",
+    oneDriveWebDavPass: "",
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -53,12 +66,15 @@ export function StorageConfiguration() {
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
 
   useEffect(() => {
+    if (!token) {
+      setLoading(false)
+      return
+    }
+    setLoading(true)
     fetchConfig()
-  }, [])
+  }, [token])
 
   const fetchConfig = async () => {
-    if (!token) return
-
     try {
       const response = await fetch(`${API_URL}/storage/config`, {
         headers: {
@@ -69,30 +85,36 @@ export function StorageConfiguration() {
       if (response.ok) {
         const data = await response.json()
 
-        // 将后端的旧格式转换为前端的新格式
-        const convertedConfig = {
+        const convertedConfig: StorageConfig = {
           enableLocal: data.config.enableMixedMode || data.config.storageType === "local",
           enableR2: data.config.enableMixedMode || data.config.storageType === "r2",
-          // OneDrive 暂时禁用
-          enableOneDrive: false,
+          enableOneDrive: data.config.enableMixedMode || data.config.storageType === "onedrive",
           r2Endpoint: data.config.r2Endpoint || "",
           r2Bucket: data.config.r2Bucket || "",
+          r2AccessKey: data.config.r2AccessKey || "",
+          r2SecretKey: data.config.r2SecretKey || "",
           oneDriveClientId: data.config.oneDriveClientId || "",
           oneDriveTenantId: data.config.oneDriveTenantId || "",
+          oneDriveWebDavUrl: data.config.oneDriveWebDavUrl || "",
+          oneDriveWebDavUser: data.config.oneDriveWebDavUser || "",
+          oneDriveWebDavPass: data.config.oneDriveWebDavPass || "",
         }
 
         setConfig(convertedConfig)
         setFormData({
           enableLocal: convertedConfig.enableLocal,
           enableR2: convertedConfig.enableR2,
-          enableOneDrive: false, // 强制禁用 OneDrive
+          enableOneDrive: convertedConfig.enableOneDrive,
           r2Endpoint: convertedConfig.r2Endpoint,
-          r2AccessKey: "",
-          r2SecretKey: "",
+          r2AccessKey: convertedConfig.r2AccessKey || "",
+          r2SecretKey: convertedConfig.r2SecretKey || "",
           r2Bucket: convertedConfig.r2Bucket,
           oneDriveClientId: convertedConfig.oneDriveClientId,
           oneDriveClientSecret: "",
           oneDriveTenantId: convertedConfig.oneDriveTenantId,
+          oneDriveWebDavUrl: convertedConfig.oneDriveWebDavUrl || "",
+          oneDriveWebDavUser: convertedConfig.oneDriveWebDavUser || "",
+          oneDriveWebDavPass: convertedConfig.oneDriveWebDavPass || "",
         })
       }
     } catch (error) {
@@ -105,9 +127,10 @@ export function StorageConfiguration() {
   const handleSave = async () => {
     if (!token) return
 
-    // 验证至少选择一个存储后端（OneDrive 暂时禁用）
+    // 验证至少选择一个存储后端
     const enabledCount = (formData.enableLocal ? 1 : 0) +
-                        (formData.enableR2 ? 1 : 0)
+                        (formData.enableR2 ? 1 : 0) +
+                        (formData.enableOneDrive ? 1 : 0)
 
     if (enabledCount === 0) {
       toast.error("配置错误", {
@@ -119,22 +142,29 @@ export function StorageConfiguration() {
     setSaving(true)
 
     try {
-      // 转换新的复选框格式为后端期望的格式
+      // 确定主要存储类型
+      let storageType: "local" | "r2" | "onedrive" = "local"
+      if (formData.enableOneDrive && !formData.enableLocal && !formData.enableR2) {
+        storageType = "onedrive"
+      } else if (formData.enableR2 && !formData.enableLocal) {
+        storageType = "r2"
+      } else if (formData.enableLocal) {
+        storageType = "local"
+      }
 
       const backendData = {
-        // 确定主要存储类型（后端只支持 local 和 r2）
-        storageType: formData.enableLocal ? "local" :
-                    formData.enableR2 ? "r2" : "local",
-        // 如果启用了多个存储则启用混合模式（OneDrive 暂时禁用）
+        storageType,
         enableMixedMode: enabledCount > 1,
         r2Endpoint: formData.r2Endpoint,
         r2AccessKey: formData.r2AccessKey,
         r2SecretKey: formData.r2SecretKey,
         r2Bucket: formData.r2Bucket,
-        // OneDrive 配置暂时清空
-        oneDriveClientId: "",
-        oneDriveClientSecret: "",
-        oneDriveTenantId: "",
+        oneDriveClientId: formData.oneDriveClientId,
+        oneDriveClientSecret: formData.oneDriveClientSecret,
+        oneDriveTenantId: formData.oneDriveTenantId,
+        oneDriveWebDavUrl: formData.oneDriveWebDavUrl,
+        oneDriveWebDavUser: formData.oneDriveWebDavUser,
+        oneDriveWebDavPass: formData.oneDriveWebDavPass,
       }
 
       const response = await fetch(`${API_URL}/storage/config`, {
@@ -187,7 +217,9 @@ export function StorageConfiguration() {
             <div className="flex gap-2">
               {config.enableLocal && <Badge variant="secondary">本地存储</Badge>}
               {config.enableR2 && <Badge variant="default">Cloudflare R2</Badge>}
-              {config.enableOneDrive && <Badge variant="default">OneDrive</Badge>}
+              {config.enableOneDrive && (
+                <Badge variant="default">OneDrive<Badge variant="outline" className="ml-2">WebDAV</Badge></Badge>
+              )}
               {!config.enableLocal && !config.enableR2 && !config.enableOneDrive && (
                 <Badge variant="destructive">未配置</Badge>
               )}
@@ -195,10 +227,10 @@ export function StorageConfiguration() {
           </CardTitle>
           <CardDescription>
             {(() => {
-              const enabledStorages = []
+              const enabledStorages: string[] = []
               if (config.enableLocal) enabledStorages.push("本地存储")
               if (config.enableR2) enabledStorages.push(`Cloudflare R2${config.r2Bucket ? ` (${config.r2Bucket})` : ""}`)
-              if (config.enableOneDrive) enabledStorages.push("OneDrive")
+              if (config.enableOneDrive) enabledStorages.push("OneDrive(WebDAV)")
 
               if (enabledStorages.length === 0) {
                 return "未配置任何存储后端"
@@ -220,7 +252,7 @@ export function StorageConfiguration() {
         <CardContent className="space-y-6">
           <div className="space-y-4">
             <Label className="text-base font-medium">存储策略</Label>
-            <p className="text-sm text-muted-foreground">选择一个或多个存储后端，支持同时使用多种存储方式。OneDrive 功能正在开发中，敬请期待。</p>
+            <p className="text-sm text-muted-foreground">选择一个或多个存储后端。OneDrive 现已支持以 <span className="font-medium">WebDAV</span> 方式配置。</p>
 
             <div className="space-y-3">
               <div className="flex items-center space-x-2">
@@ -247,19 +279,16 @@ export function StorageConfiguration() {
                 </Label>
               </div>
 
-              <div className="flex items-center space-x-2 opacity-50">
+              <div className="flex items-center space-x-2">
                 <Checkbox
                   id="enableOneDrive"
-                  checked={false}
-                  disabled={true}
+                  checked={formData.enableOneDrive}
+                  onCheckedChange={(checked) => handleInputChange("enableOneDrive", checked)}
                 />
-                <Label htmlFor="enableOneDrive" className="flex items-center gap-2 cursor-not-allowed">
+                <Label htmlFor="enableOneDrive" className="flex items-center gap-2 cursor-pointer">
                   <Cloud className="h-4 w-4" />
                   OneDrive
-                  <Badge variant="outline" className="ml-2 text-xs">
-                    <Clock className="h-3 w-3 mr-1" />
-                    敬请期待
-                  </Badge>
+                  <Badge variant="outline" className="ml-2 text-xs">WebDAV</Badge>
                 </Label>
               </div>
             </div>
@@ -349,9 +378,41 @@ export function StorageConfiguration() {
                 <div className="flex items-center gap-2">
                   <Cloud className="h-5 w-5 text-blue-600" />
                   <h3 className="text-lg font-medium">OneDrive 配置</h3>
+                  <Badge variant="outline" className="ml-2">WebDAV</Badge>
                 </div>
 
                 <div className="grid gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="oneDriveWebDavUrl">WebDAV 地址</Label>
+                    <Input
+                      id="oneDriveWebDavUrl"
+                      value={formData.oneDriveWebDavUrl}
+                      onChange={(e) => handleInputChange("oneDriveWebDavUrl", e.target.value)}
+                      placeholder="https://dav.example.com/remote.php/dav/files/..."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="oneDriveWebDavUser">WebDAV 用户名</Label>
+                    <Input
+                      id="oneDriveWebDavUser"
+                      value={formData.oneDriveWebDavUser}
+                      onChange={(e) => handleInputChange("oneDriveWebDavUser", e.target.value)}
+                      placeholder="输入 WebDAV 用户名"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="oneDriveWebDavPass">WebDAV 密码</Label>
+                    <Input
+                      id="oneDriveWebDavPass"
+                      type="password"
+                      value={formData.oneDriveWebDavPass}
+                      onChange={(e) => handleInputChange("oneDriveWebDavPass", e.target.value)}
+                      placeholder="输入 WebDAV 密码"
+                    />
+                  </div>
+
+                  <Separator />
+
                   <div className="space-y-2">
                     <Label htmlFor="oneDriveClientId">应用程序 ID (Client ID)</Label>
                     <Input
@@ -382,7 +443,7 @@ export function StorageConfiguration() {
                       placeholder="输入租户 ID 或使用 'common'"
                     />
                     <p className="text-xs text-muted-foreground">
-                      使用 'common' 支持个人和工作账户，或输入特定的租户 ID
+                      WebDAV 与 Graph API 可二选一配置；若仅使用 WebDAV，可留空下方 Azure 配置。
                     </p>
                   </div>
                 </div>
@@ -390,8 +451,7 @@ export function StorageConfiguration() {
                 <Alert>
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>
-                    请确保在 Azure 门户中正确配置了应用程序权限，包括 Files.ReadWrite.All 权限，
-                    并设置了正确的重定向 URI。
+                    WebDAV 方式将使用您提供的 WebDAV 凭据访问 OneDrive（或兼容的 WebDAV 网关）。请确保地址、用户名、密码正确且具备读写权限。
                   </AlertDescription>
                 </Alert>
               </div>
@@ -433,10 +493,9 @@ export function StorageConfiguration() {
           <div className="flex items-start gap-2">
             <Clock className="h-4 w-4 text-orange-500 mt-0.5" />
             <div className="text-sm">
-              <p className="font-medium">OneDrive 功能</p>
+              <p className="font-medium">OneDrive（WebDAV）</p>
               <p className="text-muted-foreground">
-                OneDrive 存储功能正在开发中，将支持与 Microsoft OneDrive 的无缝集成。
-                敬请期待后续版本更新。
+                现已支持以 WebDAV 方式配置 OneDrive 存储策略；后续版本会进一步完善 OneDrive 直连能力与挂载管理。
               </p>
             </div>
           </div>

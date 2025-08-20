@@ -60,6 +60,9 @@ async function initializeDatabase() {
         onedrive_client_id TEXT,
         onedrive_client_secret TEXT,
         onedrive_tenant_id TEXT,
+        onedrive_webdav_url TEXT,
+        onedrive_webdav_user TEXT,
+        onedrive_webdav_pass TEXT,
         enable_mixed_mode INTEGER NOT NULL DEFAULT 0,
         updated_at INTEGER NOT NULL
       );
@@ -221,7 +224,7 @@ async function initializeDatabase() {
     `)
 
     // 检查并添加 email_verified 字段
-    const userColumns = sqlite.prepare("PRAGMA table_info(users)").all()
+    const userColumns = sqlite.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>
     const hasEmailVerified = userColumns.some(col => col.name === 'email_verified')
 
     if (!hasEmailVerified) {
@@ -232,7 +235,7 @@ async function initializeDatabase() {
     }
 
     // 检查并添加 folder_id 字段到 files 表
-    const fileColumns = sqlite.prepare("PRAGMA table_info(files)").all()
+    const fileColumns = sqlite.prepare("PRAGMA table_info(files)").all() as Array<{ name: string }>
     const hasFolderId = fileColumns.some(col => col.name === 'folder_id')
 
     if (!hasFolderId) {
@@ -243,7 +246,7 @@ async function initializeDatabase() {
     }
 
     // 检查并添加 enable_mixed_mode 字段到 storage_config 表
-    const storageConfigColumns = sqlite.prepare("PRAGMA table_info(storage_config)").all()
+    const storageConfigColumns = sqlite.prepare("PRAGMA table_info(storage_config)").all() as Array<{ name: string }>
     const hasEnableMixedMode = storageConfigColumns.some(col => col.name === 'enable_mixed_mode')
 
     if (!hasEnableMixedMode) {
@@ -257,6 +260,9 @@ async function initializeDatabase() {
     const hasOneDriveClientId = storageConfigColumns.some(col => col.name === 'onedrive_client_id')
     const hasOneDriveClientSecret = storageConfigColumns.some(col => col.name === 'onedrive_client_secret')
     const hasOneDriveTenantId = storageConfigColumns.some(col => col.name === 'onedrive_tenant_id')
+    const hasOneDriveWebDavUrl = storageConfigColumns.some(col => col.name === 'onedrive_webdav_url')
+    const hasOneDriveWebDavUser = storageConfigColumns.some(col => col.name === 'onedrive_webdav_user')
+    const hasOneDriveWebDavPass = storageConfigColumns.some(col => col.name === 'onedrive_webdav_pass')
 
     if (!hasOneDriveClientId) {
       logger.dbInfo('添加 onedrive_client_id 字段到 storage_config 表...')
@@ -279,6 +285,27 @@ async function initializeDatabase() {
       logger.dbInfo('onedrive_tenant_id 字段添加成功')
     }
 
+    if (!hasOneDriveWebDavUrl) {
+      logger.dbInfo('添加 onedrive_webdav_url 字段到 storage_config 表...')
+      sqlite.exec('ALTER TABLE storage_config ADD COLUMN onedrive_webdav_url TEXT')
+      logger.database('ALTER', 'storage_config')
+      logger.dbInfo('onedrive_webdav_url 字段添加成功')
+    }
+
+    if (!hasOneDriveWebDavUser) {
+      logger.dbInfo('添加 onedrive_webdav_user 字段到 storage_config 表...')
+      sqlite.exec('ALTER TABLE storage_config ADD COLUMN onedrive_webdav_user TEXT')
+      logger.database('ALTER', 'storage_config')
+      logger.dbInfo('onedrive_webdav_user 字段添加成功')
+    }
+
+    if (!hasOneDriveWebDavPass) {
+      logger.dbInfo('添加 onedrive_webdav_pass 字段到 storage_config 表...')
+      sqlite.exec('ALTER TABLE storage_config ADD COLUMN onedrive_webdav_pass TEXT')
+      logger.database('ALTER', 'storage_config')
+      logger.dbInfo('onedrive_webdav_pass 字段添加成功')
+    }
+
     // 检查并修复 email_verification_codes 表的 used 字段约束
     const emailVerificationExists = sqlite.prepare(`
       SELECT name FROM sqlite_master
@@ -286,7 +313,7 @@ async function initializeDatabase() {
     `).get()
 
     if (emailVerificationExists) {
-      const emailVerificationColumns = sqlite.prepare("PRAGMA table_info(email_verification_codes)").all()
+      const emailVerificationColumns = sqlite.prepare("PRAGMA table_info(email_verification_codes)").all() as Array<{ name: string; notnull: number }>
       const usedColumn = emailVerificationColumns.find(col => col.name === 'used')
 
       if (usedColumn && usedColumn.notnull === 0) {
@@ -302,9 +329,8 @@ async function initializeDatabase() {
             created_at INTEGER NOT NULL
           );
 
-          INSERT INTO email_verification_codes_new
-          SELECT id, email, code, expires_at, COALESCE(used, 0), created_at
-          FROM email_verification_codes;
+          INSERT INTO email_verification_codes_new (id, email, code, expires_at, used, created_at)
+          SELECT id, email, code, expires_at, IFNULL(used, 0), created_at FROM email_verification_codes;
 
           DROP TABLE email_verification_codes;
           ALTER TABLE email_verification_codes_new RENAME TO email_verification_codes;
@@ -321,7 +347,7 @@ async function initializeDatabase() {
     `).get()
 
     if (downloadTokensExists) {
-      const downloadTokenColumns = sqlite.prepare("PRAGMA table_info(download_tokens)").all()
+      const downloadTokenColumns = sqlite.prepare("PRAGMA table_info(download_tokens)").all() as Array<{ name: string }>
       const hasUsageCount = downloadTokenColumns.some(col => col.name === 'usage_count')
       const hasMaxUsage = downloadTokenColumns.some(col => col.name === 'max_usage')
 
@@ -361,7 +387,7 @@ async function initializeDatabase() {
     `).get()
 
     if (fileSharesExists) {
-      const fileSharesColumns = sqlite.prepare("PRAGMA table_info(file_shares)").all()
+      const fileSharesColumns = sqlite.prepare("PRAGMA table_info(file_shares)").all() as Array<{ name: string }>
       const hasGatekeeper = fileSharesColumns.some((col: any) => col.name === 'gatekeeper')
       const hasEnabled = fileSharesColumns.some((col: any) => col.name === 'enabled')
       const hasAccessCount = fileSharesColumns.some((col: any) => col.name === 'access_count')
@@ -619,7 +645,7 @@ async function fixFileDirectLinksTable() {
     }
 
     // 检查表结构
-    const columns = sqlite.prepare("PRAGMA table_info(file_direct_links)").all()
+    const columns = sqlite.prepare("PRAGMA table_info(file_direct_links)").all() as Array<{ name: string }>
     const columnNames = columns.map(col => col.name)
 
     const requiredColumns = [
@@ -726,7 +752,7 @@ async function fixDirectLinkAccessLogsTable() {
     }
 
     // 检查表结构
-    const columns = sqlite.prepare("PRAGMA table_info(direct_link_access_logs)").all()
+    const columns = sqlite.prepare("PRAGMA table_info(direct_link_access_logs)").all() as Array<{ name: string }>
     const columnNames = columns.map(col => col.name)
 
     const requiredColumns = [
@@ -829,7 +855,7 @@ async function fixIPBansTable() {
     }
 
     // 检查表结构
-    const columns = sqlite.prepare("PRAGMA table_info(ip_bans)").all()
+    const columns = sqlite.prepare("PRAGMA table_info(ip_bans)").all() as Array<{ name: string }>
     const columnNames = columns.map(col => col.name)
 
     const requiredColumns = [
@@ -1006,3 +1032,5 @@ initializeDatabase().catch(error => {
   logger.error('数据库初始化失败:', error)
   process.exit(1)
 })
+
+export { sqlite }
