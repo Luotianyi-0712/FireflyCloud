@@ -279,27 +279,29 @@ export function OneDriveMountManagement() {
 	}
 
 	return (
-		<div className="space-y-6">
-			<div className="flex items-center justify-between">
+		<div className="space-y-4 sm:space-y-6">
+			<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0">
 				<div>
-					<h3 className="text-lg font-medium flex items-center gap-2">
-						<Cloud className="h-5 w-5 text-blue-600" />
+					<h3 className="text-base sm:text-lg font-medium flex items-center gap-2">
+						<Cloud className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
 						OneDrive 挂载点
 						{webdavConfigured && (
-							<Badge variant="outline" className="ml-2">WebDAV</Badge>
+							<Badge variant="outline" className="ml-2 text-xs">WebDAV</Badge>
 						)}
 					</h3>
-					<p className="text-sm text-muted-foreground">
+					<p className="text-xs sm:text-sm text-muted-foreground">
 						管理当前账户的 OneDrive 挂载点{azureConfigured ? "（已配置 Azure，支持授权）" : webdavConfigured ? "（已配置 WebDAV）" : ""}
 					</p>
 				</div>
 				<div className="flex gap-2">
-					<Button variant="outline" onClick={fetchMounts}>
-						<RefreshCw className="h-4 w-4 mr-2" />刷新
+					<Button variant="outline" onClick={fetchMounts} size="sm">
+						<RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+						<span className="hidden sm:inline">刷新</span>
 					</Button>
 					{azureConfigured && (
-						<Button onClick={connectOneDrive}>
-							<PlugZap className="h-4 w-4 mr-2" />连接 OneDrive
+						<Button onClick={connectOneDrive} size="sm">
+							<PlugZap className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+							<span className="text-xs sm:text-sm">连接 OneDrive</span>
 						</Button>
 					)}
 				</div>
@@ -333,14 +335,19 @@ export function OneDriveMountManagement() {
 				</div>
 				<Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
 					<DialogTrigger asChild>
-						<Button disabled={!azureConfigured && !webdavConfigured} title={!azureConfigured && !webdavConfigured ? "请先在存储设置中配置 Azure 或 WebDAV" : undefined}>
-							<Plus className="h-4 w-4 mr-2" />创建挂载点
+						<Button 
+							disabled={!azureConfigured && !webdavConfigured} 
+							title={!azureConfigured && !webdavConfigured ? "请先在存储设置中配置 Azure 或 WebDAV" : undefined}
+							size="sm"
+						>
+							<Plus className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+							<span className="text-xs sm:text-sm">创建挂载点</span>
 						</Button>
 					</DialogTrigger>
-					<DialogContent className="max-w-lg">
+					<DialogContent className="max-w-lg mx-4 sm:mx-auto">
 						<DialogHeader>
-							<DialogTitle>创建 OneDrive 挂载点</DialogTitle>
-							<DialogDescription>选择本地文件夹并填写 OneDrive 路径</DialogDescription>
+							<DialogTitle className="text-base sm:text-lg">创建 OneDrive 挂载点</DialogTitle>
+							<DialogDescription className="text-sm">选择本地文件夹并填写 OneDrive 路径</DialogDescription>
 						</DialogHeader>
 
 						<div className="space-y-4">
@@ -401,17 +408,18 @@ export function OneDriveMountManagement() {
 			</div>
 
 			{mounts.length === 0 ? (
-				<div className="text-center py-8 text-muted-foreground">
-					<Cloud className="h-12 w-12 mx-auto mb-4 opacity-50" />
-					<p>暂无 OneDrive 挂载点</p>
-					<p className="text-sm">{azureConfigured ? "请先点击 \"连接 OneDrive\" 完成授权，再创建挂载点" : webdavConfigured ? "已启用 WebDAV，可直接创建挂载点" : "请先到存储设置配置 Azure 或 WebDAV"}</p>
+				<div className="text-center py-6 sm:py-8 text-muted-foreground">
+					<Cloud className="h-8 w-8 sm:h-12 sm:w-12 mx-auto mb-3 sm:mb-4 opacity-50" />
+					<p className="text-sm sm:text-base">暂无 OneDrive 挂载点</p>
+					<p className="text-xs sm:text-sm px-4">{azureConfigured ? "请先点击 \"连接 OneDrive\" 完成授权，再创建挂载点" : webdavConfigured ? "已启用 WebDAV，可直接创建挂载点" : "请先到存储设置配置 Azure 或 WebDAV"}</p>
 				</div>
 			) : (
-				<div className="space-y-4">
+				<div className="space-y-3 sm:space-y-4">
 					{mounts.map((mount) => (
 						<Card key={mount.id} className="border-l-4 border-l-blue-500">
-							<CardContent className="p-4">
-								<div className="flex items-center justify-between">
+							<CardContent className="p-3 sm:p-4">
+								{/* 桌面端布局 */}
+								<div className="hidden sm:flex items-center justify-between">
 									<div className="space-y-1">
 										<div className="flex items-center gap-2">
 											<h4 className="font-medium">{mount.mountName}</h4>
@@ -435,6 +443,41 @@ export function OneDriveMountManagement() {
 										</Button>
 									</div>
 								</div>
+
+								{/* 移动端布局 */}
+								<div className="sm:hidden space-y-3">
+									<div className="flex items-start justify-between">
+										<div className="space-y-1 flex-1 min-w-0">
+											<h4 className="font-medium text-sm truncate">{mount.mountName}</h4>
+											<Badge variant={mount.enabled ? "default" : "secondary"} className="text-xs">
+												{mount.enabled ? "已启用" : "已禁用"}
+											</Badge>
+										</div>
+										<div className="flex items-center gap-1 ml-2">
+											<Button variant="outline" size="sm" onClick={() => openBrowser(mount)} className="h-8 w-8 p-0">
+												<FolderIcon className="h-3 w-3" />
+											</Button>
+											<Button variant="outline" size="sm" onClick={() => handleDeleteMount(mount.id)} className="h-8 w-8 p-0">
+												<Trash2 className="h-3 w-3" />
+											</Button>
+										</div>
+									</div>
+									
+									<div className="space-y-2 text-xs">
+										<div className="flex items-center gap-2">
+											<Link className="h-3 w-3 text-muted-foreground" />
+											<span className="text-muted-foreground">本地:</span>
+											<span className="truncate">{getFolderPath(mount.folderId)}</span>
+										</div>
+										<div className="flex items-center gap-2">
+											<Cloud className="h-3 w-3 text-muted-foreground" />
+											<span className="text-muted-foreground">OneDrive:</span>
+											<code className="text-xs bg-muted px-1 py-0.5 rounded truncate">
+												{mount.oneDrivePath || "/"}
+											</code>
+										</div>
+									</div>
+								</div>
 							</CardContent>
 						</Card>
 					))}
@@ -443,29 +486,30 @@ export function OneDriveMountManagement() {
 
 			{/* WebDAV 浏览对话框 */}
 			<Dialog open={browserOpen} onOpenChange={setBrowserOpen}>
-				<DialogContent className="max-w-3xl">
-					<DialogHeader>
-						<DialogTitle>浏览 OneDrive (WebDAV)</DialogTitle>
+				<DialogContent className="max-w-3xl mx-4 sm:mx-auto max-h-[90vh] overflow-hidden flex flex-col">
+					<DialogHeader className="flex-shrink-0">
+						<DialogTitle className="text-base sm:text-lg">浏览 OneDrive (WebDAV)</DialogTitle>
 						<DialogDescription>
 							{browsingMount ? (
-								<div className="text-xs text-muted-foreground">
+								<div className="text-xs text-muted-foreground break-all">
 									挂载根：{browsingMount.oneDrivePath || "/"} / 当前：{browsingSubPath || "/"}
 								</div>
 							) : null}
 						</DialogDescription>
 					</DialogHeader>
 
-					<div className="space-y-3">
-						<div className="flex items-center gap-2">
+					<div className="space-y-3 flex-1 overflow-hidden">
+						<div className="flex items-center gap-2 flex-shrink-0">
 							<Button variant="outline" size="sm" onClick={goUp} disabled={!browsingSubPath || loadingBrowse}>
-								<ArrowLeft className="h-4 w-4" /> 上一级
+								<ArrowLeft className="h-3 w-3 sm:h-4 sm:w-4 mr-1" /> 
+								<span className="text-xs sm:text-sm">上一级</span>
 							</Button>
 						</div>
 
 						{browseError && (
-							<Alert variant="destructive">
+							<Alert variant="destructive" className="flex-shrink-0">
 								<AlertCircle className="h-4 w-4" />
-								<AlertDescription>{browseError}</AlertDescription>
+								<AlertDescription className="text-sm">{browseError}</AlertDescription>
 							</Alert>
 						)}
 
@@ -474,48 +518,49 @@ export function OneDriveMountManagement() {
 								<div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
 							</div>
 						) : (
-							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-								<div>
-									<h4 className="text-sm font-medium mb-2">文件夹</h4>
+							<div className="grid grid-cols-1 sm:grid-cols-2 gap-4 overflow-auto">
+								<div className="space-y-2">
+									<h4 className="text-sm font-medium sticky top-0 bg-background py-1">文件夹</h4>
 									{browseFolders.length === 0 ? (
 										<p className="text-xs text-muted-foreground">无</p>
 									) : (
-										<div className="space-y-1">
+										<div className="space-y-1 max-h-48 sm:max-h-64 overflow-auto">
 											{browseFolders.map((f) => (
 												<button
 													key={f.id}
-													className="w-full text-left px-2 py-1 rounded hover:bg-muted flex items-center gap-2"
+													className="w-full text-left px-2 py-2 rounded hover:bg-muted flex items-center gap-2 text-sm"
 													onClick={() => goInto(f.path)}
 												>
-													<FolderIcon className="h-4 w-4" />
+													<FolderIcon className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
 													<span className="truncate">{f.name}</span>
 												</button>
 											))}
 										</div>
 									)}
 								</div>
-								<div>
-									<h4 className="text-sm font-medium mb-2">文件</h4>
+								<div className="space-y-2">
+									<h4 className="text-sm font-medium sticky top-0 bg-background py-1">文件</h4>
 									{browseFiles.length === 0 ? (
 										<p className="text-xs text-muted-foreground">无</p>
 									) : (
-										<div className="space-y-1">
+										<div className="space-y-1 max-h-48 sm:max-h-64 overflow-auto">
 											{browseFiles.map((f) => (
 												<div
 													key={f.id}
-													className="flex items-center justify-between px-2 py-1 rounded hover:bg-muted"
+													className="flex items-center justify-between px-2 py-2 rounded hover:bg-muted text-sm"
 												>
-													<div className="flex items-center gap-2 min-w-0">
-														<FileText className="h-4 w-4" />
+													<div className="flex items-center gap-2 min-w-0 flex-1">
+														<FileText className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
 														<span className="truncate">{f.name}</span>
 													</div>
 													<a
-														className="text-xs inline-flex items-center gap-1 underline"
+														className="text-xs inline-flex items-center gap-1 underline ml-2 flex-shrink-0"
 														href={makeDownloadUrl(f.path, f.name)}
 														target="_blank"
 														rel="noreferrer"
 													>
-														<Download className="h-3 w-3" /> 下载
+														<Download className="h-3 w-3" /> 
+														<span className="hidden sm:inline">下载</span>
 													</a>
 												</div>
 											))}
@@ -525,8 +570,10 @@ export function OneDriveMountManagement() {
 							</div>
 						)}
 					</div>
-					<DialogFooter>
-						<Button variant="outline" onClick={() => setBrowserOpen(false)}>关闭</Button>
+					<DialogFooter className="flex-shrink-0">
+						<Button variant="outline" onClick={() => setBrowserOpen(false)} className="text-sm">
+							关闭
+						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>

@@ -351,37 +351,37 @@ export function R2MountManagement() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0">
         <div>
-          <h3 className="text-lg font-medium">R2 挂载点</h3>
-          <p className="text-sm text-muted-foreground">
+          <h3 className="text-base sm:text-lg font-medium">R2 挂载点</h3>
+          <p className="text-xs sm:text-sm text-muted-foreground">
             管理所有用户的 Cloudflare R2 存储桶挂载点
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={fetchMounts}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            刷新
+          <Button variant="outline" onClick={fetchMounts} size="sm">
+            <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">刷新</span>
           </Button>
           <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
             <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                创建挂载点
+              <Button size="sm">
+                <Plus className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                <span className="text-xs sm:text-sm">创建挂载点</span>
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>创建 R2 挂载点</DialogTitle>
-                <DialogDescription>
+            <DialogContent className="max-w-2xl mx-4 sm:mx-auto max-h-[90vh] overflow-hidden flex flex-col">
+              <DialogHeader className="flex-shrink-0">
+                <DialogTitle className="text-base sm:text-lg">创建 R2 挂载点</DialogTitle>
+                <DialogDescription className="text-sm">
                   为指定用户创建 R2 存储桶挂载点
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="space-y-4">
+              <div className="space-y-4 flex-1 overflow-auto">
                 <div className="space-y-2">
-                  <Label htmlFor="user">目标用户</Label>
+                  <Label htmlFor="user" className="text-sm">目标用户</Label>
                   <Select 
                     value={selectedUserId} 
                     onValueChange={(value) => {
@@ -390,16 +390,16 @@ export function R2MountManagement() {
                       fetchUserFolders(value)
                     }}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="h-9">
                       <SelectValue placeholder="选择用户" />
                     </SelectTrigger>
                     <SelectContent>
                       {users.map((user) => (
                         <SelectItem key={user.id} value={user.id}>
                           <div className="flex items-center gap-2">
-                            <Users className="h-4 w-4" />
-                            {user.email}
-                            <Badge variant={user.role === "admin" ? "default" : "secondary"}>
+                            <Users className="h-3 w-3 sm:h-4 sm:w-4" />
+                            <span className="truncate text-sm">{user.email}</span>
+                            <Badge variant={user.role === "admin" ? "default" : "secondary"} className="text-xs">
                               {user.role}
                             </Badge>
                           </div>
@@ -410,21 +410,21 @@ export function R2MountManagement() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="folder">目标文件夹</Label>
+                  <Label htmlFor="folder" className="text-sm">目标文件夹</Label>
                   <Select 
                     value={selectedFolderId} 
                     onValueChange={setSelectedFolderId}
                     disabled={!selectedUserId}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="h-9">
                       <SelectValue placeholder="选择要挂载的文件夹" />
                     </SelectTrigger>
                     <SelectContent>
                       {selectedUserFolders.map((folder) => (
                         <SelectItem key={folder.id} value={folder.id}>
                           <div className="flex items-center gap-2">
-                            <Folder className="h-4 w-4" />
-                            {folder.path}
+                            <Folder className="h-3 w-3 sm:h-4 sm:w-4" />
+                            <span className="truncate text-sm">{folder.path}</span>
                           </div>
                         </SelectItem>
                       ))}
@@ -433,17 +433,19 @@ export function R2MountManagement() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="r2Path">R2 路径</Label>
+                  <Label htmlFor="r2Path" className="text-sm">R2 路径</Label>
                   <div className="flex gap-2">
                     <Input
                       value={selectedR2Path}
                       onChange={(e) => setSelectedR2Path(e.target.value)}
                       placeholder="输入 R2 路径或点击浏览"
-                      className="flex-1"
+                      className="flex-1 h-9 text-sm"
                     />
                     <Button
                       variant="outline"
                       onClick={() => setBrowserOpen(true)}
+                      size="sm"
+                      className="px-3"
                     >
                       浏览
                     </Button>
@@ -451,23 +453,24 @@ export function R2MountManagement() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="mountName">挂载点名称</Label>
+                  <Label htmlFor="mountName" className="text-sm">挂载点名称</Label>
                   <Input
                     value={mountName}
                     onChange={(e) => setMountName(e.target.value)}
                     placeholder="输入挂载点显示名称"
+                    className="h-9 text-sm"
                   />
                 </div>
               </div>
 
-              <DialogFooter>
+              <DialogFooter className="flex-shrink-0 gap-2 sm:gap-0">
                 <Button variant="outline" onClick={() => {
                   setCreateDialogOpen(false)
                   resetCreateForm()
-                }}>
+                }} className="text-sm">
                   取消
                 </Button>
-                <Button onClick={handleCreateMount}>
+                <Button onClick={handleCreateMount} className="text-sm">
                   创建挂载点
                 </Button>
               </DialogFooter>
@@ -477,121 +480,195 @@ export function R2MountManagement() {
       </div>
 
       {mounts.length === 0 ? (
-        <div className="text-center py-8 text-muted-foreground">
-          <Cloud className="h-12 w-12 mx-auto mb-4 opacity-50" />
-          <p>暂无 R2 挂载点</p>
-          <p className="text-sm">点击上方按钮创建第一个挂载点</p>
+        <div className="text-center py-6 sm:py-8 text-muted-foreground">
+          <Cloud className="h-8 w-8 sm:h-12 sm:w-12 mx-auto mb-3 sm:mb-4 opacity-50" />
+          <p className="text-sm sm:text-base">暂无 R2 挂载点</p>
+          <p className="text-xs sm:text-sm">点击上方按钮创建第一个挂载点</p>
         </div>
       ) : (
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>挂载点名称</TableHead>
-                <TableHead>用户</TableHead>
-                <TableHead>本地文件夹</TableHead>
-                <TableHead>R2 路径</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>创建时间</TableHead>
-                <TableHead>操作</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {mounts.map((mount) => (
-                <TableRow key={mount.id}>
-                  <TableCell className="font-medium">
-                    {mount.mountName}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Users className="h-4 w-4" />
-                      {mount.userEmail}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Folder className="h-4 w-4" />
-                      {mount.folderPath}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <code className="text-sm bg-muted px-2 py-1 rounded">
-                      {getDisplayR2Path(mount.r2Path)}
-                    </code>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        checked={mount.enabled}
-                        onCheckedChange={() => handleToggleMount(mount)}
-                      />
-                      <Badge variant={mount.enabled ? "default" : "secondary"}>
-                        {mount.enabled ? "启用" : "禁用"}
-                      </Badge>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {formatDate(mount.createdAt)}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleEditMount(mount)}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDeleteMount(mount.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
+        <>
+          {/* 桌面端表格 */}
+          <div className="hidden md:block rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>挂载点名称</TableHead>
+                  <TableHead>用户</TableHead>
+                  <TableHead>本地文件夹</TableHead>
+                  <TableHead>R2 路径</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead>创建时间</TableHead>
+                  <TableHead>操作</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+              </TableHeader>
+              <TableBody>
+                {mounts.map((mount) => (
+                  <TableRow key={mount.id}>
+                    <TableCell className="font-medium">
+                      {mount.mountName}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Users className="h-4 w-4" />
+                        {mount.userEmail}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Folder className="h-4 w-4" />
+                        {mount.folderPath}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <code className="text-sm bg-muted px-2 py-1 rounded">
+                        {getDisplayR2Path(mount.r2Path)}
+                      </code>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={mount.enabled}
+                          onCheckedChange={() => handleToggleMount(mount)}
+                        />
+                        <Badge variant={mount.enabled ? "default" : "secondary"}>
+                          {mount.enabled ? "启用" : "禁用"}
+                        </Badge>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {formatDate(mount.createdAt)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEditMount(mount)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDeleteMount(mount.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* 移动端卡片布局 */}
+          <div className="md:hidden space-y-3">
+            {mounts.map((mount) => (
+              <Card key={mount.id} className="border-l-4 border-l-primary">
+                <CardContent className="p-4">
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-1 flex-1 min-w-0">
+                        <h4 className="font-medium text-sm truncate">{mount.mountName}</h4>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Switch
+                            checked={mount.enabled}
+                            onCheckedChange={() => handleToggleMount(mount)}
+                            className="scale-75"
+                          />
+                          <Badge variant={mount.enabled ? "default" : "secondary"} className="text-xs">
+                            {mount.enabled ? "启用" : "禁用"}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 ml-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEditMount(mount)}
+                          className="h-8 w-8 p-0"
+                        >
+                          <Edit className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDeleteMount(mount.id)}
+                          className="h-8 w-8 p-0"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2 text-xs">
+                      <div className="flex items-center gap-2">
+                        <Users className="h-3 w-3 text-muted-foreground" />
+                        <span className="text-muted-foreground">用户:</span>
+                        <span className="truncate">{mount.userEmail}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Folder className="h-3 w-3 text-muted-foreground" />
+                        <span className="text-muted-foreground">文件夹:</span>
+                        <span className="truncate">{mount.folderPath}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Cloud className="h-3 w-3 text-muted-foreground" />
+                        <span className="text-muted-foreground">R2路径:</span>
+                        <code className="text-xs bg-muted px-1 py-0.5 rounded truncate">
+                          {getDisplayR2Path(mount.r2Path)}
+                        </code>
+                      </div>
+                      <div className="text-muted-foreground">
+                        创建时间: {formatDate(mount.createdAt)}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </>
       )}
 
       {/* 编辑对话框 */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>编辑 R2 挂载点</DialogTitle>
-            <DialogDescription>
+        <DialogContent className="mx-4 sm:mx-auto max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader className="flex-shrink-0">
+            <DialogTitle className="text-base sm:text-lg">编辑 R2 挂载点</DialogTitle>
+            <DialogDescription className="text-sm">
               修改挂载点的名称和 R2 路径
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="space-y-4 flex-1 overflow-auto">
             <div className="space-y-2">
-              <Label htmlFor="editMountName">挂载点名称</Label>
+              <Label htmlFor="editMountName" className="text-sm">挂载点名称</Label>
               <Input
                 id="editMountName"
                 value={mountName}
                 onChange={(e) => setMountName(e.target.value)}
                 placeholder="输入挂载点显示名称"
+                className="h-9 text-sm"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="editR2Path">R2 路径</Label>
+              <Label htmlFor="editR2Path" className="text-sm">R2 路径</Label>
               <div className="flex gap-2">
                 <Input
                   id="editR2Path"
                   value={selectedR2Path}
                   onChange={(e) => setSelectedR2Path(e.target.value)}
                   placeholder="输入 R2 路径或点击浏览"
-                  className="flex-1"
+                  className="flex-1 h-9 text-sm"
                 />
                 <Button
                   variant="outline"
                   onClick={() => setBrowserOpen(true)}
+                  size="sm"
+                  className="px-3"
                 >
                   浏览
                 </Button>
@@ -599,14 +676,14 @@ export function R2MountManagement() {
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="flex-shrink-0 gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => {
               setEditDialogOpen(false)
               setEditingMount(null)
-            }}>
+            }} className="text-sm">
               取消
             </Button>
-            <Button onClick={handleUpdateMount}>
+            <Button onClick={handleUpdateMount} className="text-sm">
               保存更改
             </Button>
           </DialogFooter>
