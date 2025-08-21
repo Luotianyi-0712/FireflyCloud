@@ -51,6 +51,12 @@ export class UserStorageStrategyService {
     }
   }
 
+  /** 确保用户文件夹统一位于 users/ 下（不带开头斜杠） */
+  private static normalizeUserFolder(userFolder: string): string {
+    const withoutLeading = userFolder.startsWith('/') ? userFolder.slice(1) : userFolder
+    return withoutLeading.startsWith('users/') ? withoutLeading : `users/${withoutLeading}`
+  }
+
   /**
    * 获取用户的存储策略分配
    */
@@ -103,8 +109,9 @@ export class UserStorageStrategyService {
         throw new Error("Storage strategy not found or inactive")
       }
 
-      // 生成用户专属文件夹路径
-      const finalUserFolder = userFolder || `users/${user.email.replace('@', '_at_')}_${userId.slice(-8)}`
+      // 生成用户专属文件夹路径（统一归一化到 users/ 下）
+      const rawUserFolder = userFolder || `users/${user.email.replace('@', '_at_')}_${userId.slice(-8)}`
+      const finalUserFolder = this.normalizeUserFolder(rawUserFolder)
 
       // 在远程存储中创建用户专属文件夹
       await this.ensureUserFolderInRemoteStorage(strategy, finalUserFolder)
@@ -199,11 +206,12 @@ export class UserStorageStrategyService {
           logger.info(`OneDrive存储策略访问令牌刷新成功`)
         }
 
-        // 设置访问令牌并创建文件夹
+        // 设置访问令牌并创建文件夹（归一化路径，确保在 /users 下）
         oneDriveService.setAccessToken(config.accessToken)
-        await oneDriveService.ensureFolderExists(`/${userFolder}`)
+        const normalized = this.normalizeUserFolder(userFolder)
+        await oneDriveService.ensureFolderExists(`/${normalized}`)
         
-        logger.info(`OneDrive用户文件夹创建成功: /${userFolder}`)
+        logger.info(`OneDrive用户文件夹创建成功: /${normalized}`)
       } else if (strategy.type === 'r2') {
         // R2 存储不需要预创建文件夹，上传时会自动创建路径
         logger.info(`R2存储策略无需预创建用户文件夹: ${userFolder}`)

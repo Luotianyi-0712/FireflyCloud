@@ -553,6 +553,29 @@ export class OneDriveService {
   }
 
   /**
+   * 通过路径获取文件下载URL
+   */
+  async getDownloadUrlByPath(filePath: string): Promise<string> {
+    try {
+      logger.debug(`通过路径获取OneDrive文件下载URL: ${filePath}`)
+      const cleanPath = filePath.startsWith("/") ? filePath.substring(1) : filePath
+      const response = await this.httpClient.get(`/me/drive/root:/${cleanPath}:/content`, {
+        maxRedirects: 0,
+        validateStatus: (status) => status === 302,
+      })
+      const downloadUrl = response.headers.location
+      if (!downloadUrl) {
+        throw new Error("No download URL found by path")
+      }
+      logger.info(`通过路径获取下载URL成功: ${filePath}`)
+      return downloadUrl
+    } catch (error) {
+      logger.error("通过路径获取OneDrive文件下载URL失败:", error)
+      throw new Error("Failed to get download URL from OneDrive by path")
+    }
+  }
+
+  /**
    * 删除文件或文件夹
    */
   async deleteItem(itemId: string): Promise<void> {

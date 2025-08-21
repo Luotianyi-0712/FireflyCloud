@@ -8,6 +8,15 @@ import { IPLocationService } from "../services/ip-location"
 import { IPBanService } from "../services/ip-ban"
 import { logger } from "../utils/logger"
 
+// 解析 OneDrive 配置字段（兼容全局 storage_config 与策略风格字段名）
+function resolveOneDriveConfig(cfg: any) {
+  return {
+    clientId: cfg.oneDriveClientId || cfg.clientId,
+    clientSecret: cfg.oneDriveClientSecret || cfg.clientSecret,
+    tenantId: cfg.oneDriveTenantId || cfg.tenantId,
+  }
+}
+
 // 辅助函数：获取客户端IP地址
 function getClientIP(headers: Record<string, string | undefined>): string {
   return headers['x-forwarded-for']?.split(',')[0]?.trim() ||
@@ -105,41 +114,68 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
         .get()
 
       if (oneDriveMount) {
-        // 文件存储在OneDrive挂载点中，使用OneDrive API下载
+        // 文件存储在OneDrive挂载点中，使用管理员 OneDrive 账号下载
         logger.debug(`文件存储在OneDrive挂载点中: ${oneDriveMount.mountName}`)
-        
-        // 获取用户的OneDrive认证信息
-        const auth = await db
-          .select()
-          .from(oneDriveAuth)
-          .where(eq(oneDriveAuth.userId, file.userId))
-          .get()
-
-        if (!auth) {
-          logger.error(`用户OneDrive未认证: ${file.userId}`)
-          set.status = 401
-          return { error: "OneDrive not authenticated" }
-        }
-
-        // 检查令牌是否过期
-        if (auth.expiresAt <= Date.now()) {
-          logger.error(`OneDrive访问令牌已过期: ${file.userId}`)
-          set.status = 401
-          return { error: "OneDrive access token expired, please re-authenticate" }
-        }
-
         try {
+          const { users } = require("../db/schema")
+          const { OneDriveService } = require("../services/onedrive")
+
+          // 获取管理员 OneDrive 认证
+          const adminAuth = await db
+            .select({
+              id: oneDriveAuth.id,
+              accessToken: oneDriveAuth.accessToken,
+              refreshToken: oneDriveAuth.refreshToken,
+              expiresAt: oneDriveAuth.expiresAt,
+            })
+            .from(oneDriveAuth)
+            .innerJoin(users, eq(oneDriveAuth.userId, users.id))
+            .where(eq(users.role, 'admin'))
+            .get()
+
+          if (!adminAuth) {
+            logger.error(`管理员OneDrive认证信息未找到`)
+            set.status = 401
+            return { error: "OneDrive not configured" }
+          }
+
+          // 刷新过期令牌
+          let accessToken = adminAuth.accessToken
+          if (adminAuth.expiresAt <= Date.now()) {
+            try {
+              const od = resolveOneDriveConfig(config)
+              const oneDriveService = new OneDriveService({
+                clientId: od.clientId,
+                clientSecret: od.clientSecret,
+                tenantId: od.tenantId,
+              })
+              const refreshed = await oneDriveService.refreshToken(adminAuth.refreshToken)
+              accessToken = refreshed.accessToken
+              await db.update(oneDriveAuth).set({
+                accessToken: refreshed.accessToken,
+                refreshToken: refreshed.refreshToken,
+                expiresAt: refreshed.expiresAt,
+                updatedAt: Date.now(),
+              }).where(eq(oneDriveAuth.id, adminAuth.id))
+              logger.info(`管理员OneDrive访问令牌刷新成功`)
+            } catch (e) {
+              logger.error(`管理员OneDrive访问令牌刷新失败`, e)
+              set.status = 401
+              return { error: "OneDrive access token expired, please re-authenticate in admin panel" }
+            }
+          }
+
           const storageService = new StorageService(config)
-          storageService.setOneDriveAccessToken(auth.accessToken)
-          
+          storageService.setOneDriveAccessToken(accessToken)
+
           // 使用OneDrive API下载文件
           const fileBuffer = await storageService.downloadFile(file.storagePath)
-          
+
           // 设置响应头
           set.headers["Content-Type"] = file.mimeType || "application/octet-stream"
           set.headers["Content-Disposition"] = `attachment; filename="${encodeURIComponent(file.originalName)}"`
           set.headers["Content-Length"] = fileBuffer.length.toString()
-          
+
           logger.info(`OneDrive文件下载成功: ${file.originalName}`)
           return fileBuffer
         } catch (error) {
@@ -158,85 +194,90 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
         set.redirect = downloadUrl
         return
       } else if (config.storageType === "onedrive" || file.storageType === "onedrive") {
-        // OneDrive存储 - 使用管理员认证或存储策略认证
+        // OneDrive存储 - 始终使用管理员认证（并在过期时自动刷新）
         try {
-          const { UserStorageStrategyService } = require("../services/user-storage-strategy")
           const { users } = require("../db/schema")
-          
-          // 首先尝试获取用户的存储策略
-          const { assignment, strategy } = await UserStorageStrategyService.getUserEffectiveStorageStrategy(file.userId)
-          
-          if (assignment && strategy && strategy.type === 'onedrive') {
-            // 使用存储策略中的OneDrive认证
-            logger.debug(`使用存储策略OneDrive认证下载文件: ${file.originalName}`)
-            
-            let config = JSON.parse(strategy.config)
-            
-            // 检查并刷新令牌
-            if (config.expiresAt && config.expiresAt <= Date.now()) {
-              logger.warn(`存储策略OneDrive访问令牌已过期，开始刷新`)
-              
-              const { OneDriveService } = require("../services/onedrive")
+          const { OneDriveService } = require("../services/onedrive")
+
+          const adminAuth = await db
+            .select({
+              id: oneDriveAuth.id,
+              accessToken: oneDriveAuth.accessToken,
+              refreshToken: oneDriveAuth.refreshToken,
+              expiresAt: oneDriveAuth.expiresAt,
+            })
+            .from(oneDriveAuth)
+            .innerJoin(users, eq(oneDriveAuth.userId, users.id))
+            .where(eq(users.role, 'admin'))
+            .get()
+
+          if (!adminAuth) {
+            logger.error(`管理员OneDrive认证信息未找到`)
+            set.status = 401
+            return { error: "OneDrive not configured" }
+          }
+
+          let accessToken = adminAuth.accessToken
+          if (adminAuth.expiresAt <= Date.now()) {
+            try {
+              const od = resolveOneDriveConfig(config)
               const oneDriveService = new OneDriveService({
-                clientId: config.clientId,
-                clientSecret: config.clientSecret,
-                tenantId: config.tenantId,
+                clientId: od.clientId,
+                clientSecret: od.clientSecret,
+                tenantId: od.tenantId,
               })
-              
-              const refreshedTokens = await oneDriveService.refreshToken(config.refreshToken)
-              
-              // 更新存储策略配置
-              config.accessToken = refreshedTokens.accessToken
-              config.refreshToken = refreshedTokens.refreshToken
-              config.expiresAt = refreshedTokens.expiresAt
-              
-              const { storageStrategies } = require("../db/schema")
-              await db
-                .update(storageStrategies)
-                .set({
-                  config: JSON.stringify(config),
-                  updatedAt: Date.now()
-                })
-                .where(eq(storageStrategies.id, strategy.id))
-              
-              logger.info(`存储策略OneDrive访问令牌刷新成功`)
-            }
-            
-            storageService.setOneDriveAccessToken(config.accessToken)
-          } else {
-            // 回退到管理员OneDrive认证
-            logger.debug(`使用管理员OneDrive认证下载文件: ${file.originalName}`)
-            
-            const adminAuth = await db
-              .select({
-                accessToken: oneDriveAuth.accessToken,
-                refreshToken: oneDriveAuth.refreshToken,
-                expiresAt: oneDriveAuth.expiresAt,
-              })
-              .from(oneDriveAuth)
-              .innerJoin(users, eq(oneDriveAuth.userId, users.id))
-              .where(eq(users.role, 'admin'))
-              .get()
-
-            if (!adminAuth) {
-              logger.error(`管理员OneDrive认证信息未找到`)
-              set.status = 401
-              return { error: "OneDrive not configured" }
-            }
-
-            // 检查管理员令牌是否过期
-            if (adminAuth.expiresAt <= Date.now()) {
-              logger.error(`管理员OneDrive访问令牌已过期`)
+              const refreshed = await oneDriveService.refreshToken(adminAuth.refreshToken)
+              accessToken = refreshed.accessToken
+              await db.update(oneDriveAuth).set({
+                accessToken: refreshed.accessToken,
+                refreshToken: refreshed.refreshToken,
+                expiresAt: refreshed.expiresAt,
+                updatedAt: Date.now(),
+              }).where(eq(oneDriveAuth.id, adminAuth.id))
+              logger.info(`管理员OneDrive访问令牌刷新成功`)
+            } catch (e) {
+              logger.error(`管理员OneDrive访问令牌刷新失败`, e)
               set.status = 401
               return { error: "OneDrive access token expired, please re-authenticate in admin panel" }
             }
-
-            storageService.setOneDriveAccessToken(adminAuth.accessToken)
           }
-          
-          const downloadUrl = await storageService.getDownloadUrl(file.storagePath)
-          set.redirect = downloadUrl
-          return
+
+          const storageService = new StorageService(config)
+          storageService.setOneDriveAccessToken(accessToken)
+
+          // 改为后端直传：优先按 itemId 下载，失败则按路径回退
+          try {
+            const fileBuffer = await storageService.downloadFile(file.storagePath)
+            set.headers["Content-Type"] = file.mimeType || "application/octet-stream"
+            set.headers["Content-Disposition"] = `attachment; filename=\"${encodeURIComponent(file.originalName)}\"`
+            set.headers["Content-Length"] = fileBuffer.length.toString()
+            logger.info(`OneDrive文件下载成功: ${file.originalName}`)
+            return fileBuffer
+          } catch (e) {
+            logger.warn(`按 itemId 下载失败，尝试按路径回退: ${file.storagePath}`)
+            const { UserStorageStrategyService } = require("../services/user-storage-strategy")
+            const { assignment } = await UserStorageStrategyService.getUserEffectiveStorageStrategy(file.userId)
+            const path = assignment ? `${assignment.userFolder}/${file.filename}` : `users/${file.userId}/${file.filename}`
+            const od = resolveOneDriveConfig(config)
+            const { OneDriveService } = require("../services/onedrive")
+            const oneDriveService = new OneDriveService({ clientId: od.clientId, clientSecret: od.clientSecret, tenantId: od.tenantId })
+            oneDriveService.setAccessToken(accessToken)
+            try {
+              const directUrl = await oneDriveService.getDownloadUrlByPath(path)
+              const axios = (await import("axios")).default
+              const resp = await axios.get(directUrl, { responseType: 'arraybuffer' })
+              const buffer = Buffer.from(resp.data)
+              set.headers["Content-Type"] = file.mimeType || "application/octet-stream"
+              set.headers["Content-Disposition"] = `attachment; filename=\"${encodeURIComponent(file.originalName)}\"`
+              set.headers["Content-Length"] = buffer.length.toString()
+              logger.info(`OneDrive按路径下载成功: ${path}`)
+              return buffer
+            } catch (err) {
+              logger.error("OneDrive按路径下载失败:", err)
+              set.status = 500
+              return { error: "OneDrive download failed" }
+            }
+          }
         } catch (error) {
           logger.error("OneDrive下载认证失败:", error)
           set.status = 500
@@ -374,41 +415,68 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
         .get()
 
       if (oneDriveMount) {
-        // 文件存储在OneDrive挂载点中，使用OneDrive API下载
+        // 直链：文件存储在OneDrive挂载点中，使用管理员 OneDrive 账号下载
         logger.debug(`直链文件存储在OneDrive挂载点中: ${oneDriveMount.mountName}`)
-        
-        // 获取用户的OneDrive认证信息
-        const auth = await db
-          .select()
-          .from(oneDriveAuth)
-          .where(eq(oneDriveAuth.userId, file.userId))
-          .get()
-
-        if (!auth) {
-          logger.error(`用户OneDrive未认证: ${file.userId}`)
-          set.status = 401
-          return { error: "OneDrive not authenticated" }
-        }
-
-        // 检查令牌是否过期
-        if (auth.expiresAt <= Date.now()) {
-          logger.error(`OneDrive访问令牌已过期: ${file.userId}`)
-          set.status = 401
-          return { error: "OneDrive access token expired, please re-authenticate" }
-        }
-
         try {
+          const { users } = require("../db/schema")
+          const { OneDriveService } = require("../services/onedrive")
+
+          // 获取管理员 OneDrive 认证
+          const adminAuth = await db
+            .select({
+              id: oneDriveAuth.id,
+              accessToken: oneDriveAuth.accessToken,
+              refreshToken: oneDriveAuth.refreshToken,
+              expiresAt: oneDriveAuth.expiresAt,
+            })
+            .from(oneDriveAuth)
+            .innerJoin(users, eq(oneDriveAuth.userId, users.id))
+            .where(eq(users.role, 'admin'))
+            .get()
+
+          if (!adminAuth) {
+            logger.error(`管理员OneDrive认证信息未找到`)
+            set.status = 401
+            return { error: "OneDrive not configured" }
+          }
+
+          // 刷新过期令牌
+          let accessToken = adminAuth.accessToken
+          if (adminAuth.expiresAt <= Date.now()) {
+            try {
+              const od = resolveOneDriveConfig(config)
+              const oneDriveService = new OneDriveService({
+                clientId: od.clientId,
+                clientSecret: od.clientSecret,
+                tenantId: od.tenantId,
+              })
+              const refreshed = await oneDriveService.refreshToken(adminAuth.refreshToken)
+              accessToken = refreshed.accessToken
+              await db.update(oneDriveAuth).set({
+                accessToken: refreshed.accessToken,
+                refreshToken: refreshed.refreshToken,
+                expiresAt: refreshed.expiresAt,
+                updatedAt: Date.now(),
+              }).where(eq(oneDriveAuth.id, adminAuth.id))
+              logger.info(`管理员OneDrive访问令牌刷新成功`)
+            } catch (e) {
+              logger.error(`管理员OneDrive访问令牌刷新失败`, e)
+              set.status = 401
+              return { error: "OneDrive access token expired, please re-authenticate in admin panel" }
+            }
+          }
+
           const storageService = new StorageService(config)
-          storageService.setOneDriveAccessToken(auth.accessToken)
-          
+          storageService.setOneDriveAccessToken(accessToken)
+
           // 使用OneDrive API下载文件
           const fileBuffer = await storageService.downloadFile(file.storagePath)
-          
+
           // 设置响应头
           set.headers["Content-Type"] = file.mimeType || "application/octet-stream"
           set.headers["Content-Disposition"] = `attachment; filename="${encodeURIComponent(file.originalName)}"`
           set.headers["Content-Length"] = fileBuffer.length.toString()
-          
+
           logger.info(`OneDrive直链文件下载成功: ${file.originalName}`)
           return fileBuffer
         } catch (error) {
@@ -427,85 +495,90 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
         set.redirect = downloadUrl
         return
       } else if (config.storageType === "onedrive" || file.storageType === "onedrive") {
-        // OneDrive存储 - 使用管理员认证或存储策略认证
+        // 直链：OneDrive存储 - 始终使用管理员认证（并在过期时自动刷新）
         try {
-          const { UserStorageStrategyService } = require("../services/user-storage-strategy")
           const { users } = require("../db/schema")
-          
-          // 首先尝试获取用户的存储策略
-          const { assignment, strategy } = await UserStorageStrategyService.getUserEffectiveStorageStrategy(file.userId)
-          
-          if (assignment && strategy && strategy.type === 'onedrive') {
-            // 使用存储策略中的OneDrive认证
-            logger.debug(`使用存储策略OneDrive认证访问直链: ${file.originalName}`)
-            
-            let config = JSON.parse(strategy.config)
-            
-            // 检查并刷新令牌
-            if (config.expiresAt && config.expiresAt <= Date.now()) {
-              logger.warn(`存储策略OneDrive访问令牌已过期，开始刷新`)
-              
-              const { OneDriveService } = require("../services/onedrive")
+          const { OneDriveService } = require("../services/onedrive")
+
+          const adminAuth = await db
+            .select({
+              id: oneDriveAuth.id,
+              accessToken: oneDriveAuth.accessToken,
+              refreshToken: oneDriveAuth.refreshToken,
+              expiresAt: oneDriveAuth.expiresAt,
+            })
+            .from(oneDriveAuth)
+            .innerJoin(users, eq(oneDriveAuth.userId, users.id))
+            .where(eq(users.role, 'admin'))
+            .get()
+
+          if (!adminAuth) {
+            logger.error(`管理员OneDrive认证信息未找到`)
+            set.status = 401
+            return { error: "OneDrive not configured" }
+          }
+
+          let accessToken = adminAuth.accessToken
+          if (adminAuth.expiresAt <= Date.now()) {
+            try {
+              const od = resolveOneDriveConfig(config)
               const oneDriveService = new OneDriveService({
-                clientId: config.clientId,
-                clientSecret: config.clientSecret,
-                tenantId: config.tenantId,
+                clientId: od.clientId,
+                clientSecret: od.clientSecret,
+                tenantId: od.tenantId,
               })
-              
-              const refreshedTokens = await oneDriveService.refreshToken(config.refreshToken)
-              
-              // 更新存储策略配置
-              config.accessToken = refreshedTokens.accessToken
-              config.refreshToken = refreshedTokens.refreshToken
-              config.expiresAt = refreshedTokens.expiresAt
-              
-              const { storageStrategies } = require("../db/schema")
-              await db
-                .update(storageStrategies)
-                .set({
-                  config: JSON.stringify(config),
-                  updatedAt: Date.now()
-                })
-                .where(eq(storageStrategies.id, strategy.id))
-              
-              logger.info(`存储策略OneDrive访问令牌刷新成功`)
-            }
-            
-            storageService.setOneDriveAccessToken(config.accessToken)
-          } else {
-            // 回退到管理员OneDrive认证
-            logger.debug(`使用管理员OneDrive认证访问直链: ${file.originalName}`)
-            
-            const adminAuth = await db
-              .select({
-                accessToken: oneDriveAuth.accessToken,
-                refreshToken: oneDriveAuth.refreshToken,
-                expiresAt: oneDriveAuth.expiresAt,
-              })
-              .from(oneDriveAuth)
-              .innerJoin(users, eq(oneDriveAuth.userId, users.id))
-              .where(eq(users.role, 'admin'))
-              .get()
-
-            if (!adminAuth) {
-              logger.error(`管理员OneDrive认证信息未找到`)
-              set.status = 401
-              return { error: "OneDrive not configured" }
-            }
-
-            // 检查管理员令牌是否过期
-            if (adminAuth.expiresAt <= Date.now()) {
-              logger.error(`管理员OneDrive访问令牌已过期`)
+              const refreshed = await oneDriveService.refreshToken(adminAuth.refreshToken)
+              accessToken = refreshed.accessToken
+              await db.update(oneDriveAuth).set({
+                accessToken: refreshed.accessToken,
+                refreshToken: refreshed.refreshToken,
+                expiresAt: refreshed.expiresAt,
+                updatedAt: Date.now(),
+              }).where(eq(oneDriveAuth.id, adminAuth.id))
+              logger.info(`管理员OneDrive访问令牌刷新成功`)
+            } catch (e) {
+              logger.error(`管理员OneDrive访问令牌刷新失败`, e)
               set.status = 401
               return { error: "OneDrive access token expired, please re-authenticate in admin panel" }
             }
-
-            storageService.setOneDriveAccessToken(adminAuth.accessToken)
           }
-          
-          const downloadUrl = await storageService.getDownloadUrl(file.storagePath)
-          set.redirect = downloadUrl
-          return
+
+          const storageService = new StorageService(config)
+          storageService.setOneDriveAccessToken(accessToken)
+
+          // 改为后端直传：优先按 itemId 下载，失败则按路径回退
+          try {
+            const fileBuffer = await storageService.downloadFile(file.storagePath)
+            set.headers["Content-Type"] = file.mimeType || "application/octet-stream"
+            set.headers["Content-Disposition"] = `attachment; filename=\"${encodeURIComponent(file.originalName)}\"`
+            set.headers["Content-Length"] = fileBuffer.length.toString()
+            logger.info(`OneDrive直链文件下载成功: ${file.originalName}`)
+            return fileBuffer
+          } catch (e) {
+            logger.warn(`直链：按 itemId 下载失败，尝试按路径回退: ${file.storagePath}`)
+            const { UserStorageStrategyService } = require("../services/user-storage-strategy")
+            const { assignment } = await UserStorageStrategyService.getUserEffectiveStorageStrategy(file.userId)
+            const path = assignment ? `${assignment.userFolder}/${file.filename}` : `users/${file.userId}/${file.filename}`
+            const od = resolveOneDriveConfig(config)
+            const { OneDriveService } = require("../services/onedrive")
+            const oneDriveService = new OneDriveService({ clientId: od.clientId, clientSecret: od.clientSecret, tenantId: od.tenantId })
+            oneDriveService.setAccessToken(accessToken)
+            try {
+              const directUrl = await oneDriveService.getDownloadUrlByPath(path)
+              const axios = (await import("axios")).default
+              const resp = await axios.get(directUrl, { responseType: 'arraybuffer' })
+              const buffer = Buffer.from(resp.data)
+              set.headers["Content-Type"] = file.mimeType || "application/octet-stream"
+              set.headers["Content-Disposition"] = `attachment; filename=\"${encodeURIComponent(file.originalName)}\"`
+              set.headers["Content-Length"] = buffer.length.toString()
+              logger.info(`OneDrive直链按路径下载成功: ${path}`)
+              return buffer
+            } catch (err) {
+              logger.error("OneDrive直链按路径下载失败:", err)
+              set.status = 500
+              return { error: "OneDrive download failed" }
+            }
+          }
         } catch (error) {
           logger.error("OneDrive直链认证失败:", error)
           set.status = 500
