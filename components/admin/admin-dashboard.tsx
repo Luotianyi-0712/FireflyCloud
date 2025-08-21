@@ -14,6 +14,7 @@ import { StorageConfiguration } from "./storage-configuration"
 import { SmtpConfiguration } from "./smtp-configuration"
 import { QuotaManagement } from "./quota-management"
 import { AdminSettings } from "./admin-settings"
+import { GoogleOAuthConfiguration } from "./google-oauth-configuration"
 
 export function AdminDashboard() {
   const [stats, setStats] = useState<any>(null)
@@ -58,6 +59,12 @@ export function AdminDashboard() {
       label: "邮件配置",
       icon: Mail,
       description: "配置SMTP邮件服务"
+    },
+    {
+      value: "oauth",
+      label: "OAuth配置",
+      icon: Cloud,
+      description: "配置谷歌OAuth登录"
     },
     {
       value: "admin-settings",
@@ -156,7 +163,7 @@ export function AdminDashboard() {
           </div>
         ) : (
           /* 桌面端使用响应式网格 */
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-1 h-auto p-1 transition-all duration-200">
+          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-1 h-auto p-1 transition-all duration-200">
             {tabsConfig.map((tab) => {
               const Icon = tab.icon
               return (
@@ -212,6 +219,10 @@ export function AdminDashboard() {
 
         <TabsContent value="smtp" className="space-y-4 animate-in fade-in-50 duration-300">
           {isTabLoaded("smtp") && <SmtpConfiguration />}
+        </TabsContent>
+
+        <TabsContent value="oauth" className="space-y-4 animate-in fade-in-50 duration-300">
+          {isTabLoaded("oauth") && <GoogleOAuthConfiguration />}
         </TabsContent>
 
         <TabsContent value="admin-settings" className="space-y-4 animate-in fade-in-50 duration-300">

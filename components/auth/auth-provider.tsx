@@ -118,6 +118,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const getGoogleAuthUrl = async (): Promise<string> => {
+    const response = await fetch(`${API_URL}/auth/google-oauth-url`)
+    
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "获取谷歌授权链接失败")
+    }
+
+    const data = await response.json()
+    return data.authUrl
+  }
+
+  const loginWithGoogle = async (code: string) => {
+    const response = await fetch(`${API_URL}/auth/google-oauth-callback`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ code }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "谷歌登录失败，请稍后重试")
+    }
+
+    const data = await response.json()
+    setToken(data.token)
+    setUser(data.user)
+    if (isClient && typeof window !== 'undefined') {
+      localStorage.setItem("token", data.token)
+    }
+  }
+
   const logout = () => {
     setUser(null)
     setToken(null)
@@ -133,6 +167,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         token,
         login,
         register,
+        loginWithGoogle,
+        getGoogleAuthUrl,
         logout,
         loading,
       }}

@@ -122,6 +122,16 @@ export const smtpConfig = sqliteTable("smtp_config", {
   updatedAt: integer("updated_at").notNull(),
 })
 
+// 谷歌OAuth配置表
+export const googleOAuthConfig = sqliteTable("google_oauth_config", {
+  id: integer("id").primaryKey().default(1),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
+  clientId: text("client_id"),
+  clientSecret: text("client_secret"),
+  redirectUri: text("redirect_uri"),
+  updatedAt: integer("updated_at").notNull(),
+})
+
 export const downloadTokens = sqliteTable("download_tokens", {
   id: text("id").primaryKey(),
   fileId: text("file_id").notNull(),

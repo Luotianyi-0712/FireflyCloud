@@ -8,6 +8,7 @@ import { authRoutes } from "./routes/auth"
 import { fileRoutes } from "./routes/files"
 import { folderRoutes } from "./routes/folders"
 import { adminRoutes } from "./routes/admin"
+import { adminGoogleOAuthRoutes } from "./routes/admin-google-oauth"
 import { storageRoutes } from "./routes/storage"
 import { downloadRoutes } from "./routes/download"
 import { shareRoutes } from "./routes/share"
@@ -156,6 +157,7 @@ const app = new Elysia()
   .use(fileRoutes)
   .use(folderRoutes)
   .use(adminRoutes)
+  .use(adminGoogleOAuthRoutes)
   .use(storageRoutes)
   .use(downloadRoutes)
   .use(shareRoutes)
