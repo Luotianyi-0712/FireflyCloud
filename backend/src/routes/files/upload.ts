@@ -98,7 +98,7 @@ export const uploadRoutes = new Elysia()
 					logger.info(`文件上传到R2挂载点: ${r2MountPoint.mountName} -> ${fullR2Path}`)
 					logger.info(`当前R2路径: ${currentR2Path || '未指定，使用挂载点路径'}`)
 				} else {
-					storagePath = await storageService.uploadFile(file, filename)
+					storagePath = await storageService.uploadFile(file, filename, user.userId)
 				}
 				logger.file('UPLOAD', file.name, file.size, true)
 

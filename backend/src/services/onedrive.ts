@@ -323,6 +323,16 @@ export class OneDriveService {
       const cleanPath = path.startsWith("/") ? path.substring(1) : path
       const fullPath = cleanPath ? `${cleanPath}/${filename}` : filename
 
+      // 检查访问令牌是否设置
+      const authHeader = this.httpClient.defaults.headers.common["Authorization"]
+      if (!authHeader) {
+        logger.error("OneDrive访问令牌未设置")
+        throw new Error("OneDrive access token not set")
+      }
+
+      logger.debug(`使用访问令牌: ${authHeader.toString().substring(0, 20)}...`)
+      logger.debug(`请求路径: /me/drive/root:/${fullPath}:/createUploadSession`)
+
       const response = await this.httpClient.post(
         `/me/drive/root:/${fullPath}:/createUploadSession`,
         {
@@ -335,9 +345,22 @@ export class OneDriveService {
 
       logger.info(`OneDrive上传会话创建成功: ${filename}`)
       return response.data
-    } catch (error) {
-      logger.error("创建OneDrive上传会话失败:", error)
-      throw new Error("Failed to create OneDrive upload session")
+    } catch (error: any) {
+      logger.error("创建OneDrive上传会话失败:")
+      logger.error(`错误状态: ${error.response?.status}`)
+      logger.error(`错误信息: ${error.response?.statusText}`)
+      logger.error(`错误详情: ${JSON.stringify(error.response?.data)}`)
+      logger.error(`请求URL: ${error.config?.url}`)
+      
+      if (error.response?.status === 401) {
+        throw new Error("OneDrive访问令牌无效或已过期，请重新授权")
+      } else if (error.response?.status === 403) {
+        throw new Error("OneDrive访问被拒绝，请检查权限设置")
+      } else if (error.response?.status === 404) {
+        throw new Error("OneDrive路径不存在，请检查文件夹路径")
+      }
+      
+      throw new Error(`Failed to create OneDrive upload session: ${error.response?.data?.error?.message || error.message}`)
     }
   }
 
@@ -352,19 +375,35 @@ export class OneDriveService {
     totalSize: number
   ): Promise<any> {
     try {
-      logger.debug(`上传文件块: ${rangeStart}-${rangeEnd}/${totalSize}`)
+      logger.debug(`上传文件块: ${rangeStart}-${rangeEnd}/${totalSize} (${chunk.byteLength} bytes)`)
 
       const response = await axios.put(uploadUrl, chunk, {
         headers: {
           "Content-Range": `bytes ${rangeStart}-${rangeEnd}/${totalSize}`,
           "Content-Length": chunk.byteLength.toString(),
         },
+        timeout: 60000, // 60秒超时
+        maxRedirects: 0, // 禁用重定向
       })
 
+      logger.debug(`文件块上传成功: ${rangeStart}-${rangeEnd}, 状态: ${response.status}`)
       return response.data
-    } catch (error) {
-      logger.error("上传文件块失败:", error)
-      throw new Error("Failed to upload chunk to OneDrive")
+    } catch (error: any) {
+      logger.error("上传文件块失败:")
+      logger.error(`块范围: ${rangeStart}-${rangeEnd}/${totalSize}`)
+      logger.error(`错误状态: ${error.response?.status}`)
+      logger.error(`错误信息: ${error.response?.statusText}`)
+      logger.error(`错误详情: ${JSON.stringify(error.response?.data)}`)
+      
+      if (error.response?.status === 401) {
+        throw new Error("OneDrive访问令牌无效，请重新授权")
+      } else if (error.response?.status === 404) {
+        throw new Error("OneDrive上传会话已过期，请重新开始上传")
+      } else if (error.response?.status === 416) {
+        throw new Error("OneDrive文件块范围无效")
+      }
+      
+      throw new Error(`Failed to upload chunk to OneDrive: ${error.response?.data?.error?.message || error.message}`)
     }
   }
 
@@ -375,17 +414,29 @@ export class OneDriveService {
     try {
       logger.debug(`上传大文件到OneDrive: ${filename} (${file.size} bytes)`)
 
+      // 检查访问令牌是否设置
+      const authHeader = this.httpClient.defaults.headers.common["Authorization"]
+      if (!authHeader) {
+        logger.error("OneDrive访问令牌未设置，无法上传大文件")
+        throw new Error("OneDrive access token not set")
+      }
+
       // 创建上传会话
       const session = await this.createUploadSession(path, filename)
+      logger.debug(`上传会话URL: ${session.uploadUrl}`)
 
       const buffer = await file.arrayBuffer()
       const chunkSize = 320 * 1024 * 10 // 3.2MB chunks
       let uploadedBytes = 0
 
+      logger.info(`开始分片上传，总大小: ${buffer.byteLength} bytes，分片大小: ${chunkSize} bytes`)
+
       while (uploadedBytes < buffer.byteLength) {
         const start = uploadedBytes
         const end = Math.min(uploadedBytes + chunkSize - 1, buffer.byteLength - 1)
         const chunk = buffer.slice(start, end + 1)
+
+        logger.debug(`上传分片 ${start}-${end}/${buffer.byteLength} (${chunk.byteLength} bytes)`)
 
         const result = await this.uploadChunk(
           session.uploadUrl,
@@ -398,16 +449,37 @@ export class OneDriveService {
         uploadedBytes = end + 1
 
         // 如果上传完成，返回文件信息
-        if (result.id) {
+        if (result && result.id) {
           logger.info(`大文件上传成功: ${filename}`)
           return result
         }
+
+        // 显示上传进度
+        const progress = Math.round((uploadedBytes / buffer.byteLength) * 100)
+        logger.debug(`上传进度: ${progress}% (${uploadedBytes}/${buffer.byteLength})`)
       }
 
       throw new Error("Upload completed but no file info returned")
-    } catch (error) {
-      logger.error("上传大文件失败:", error)
-      throw new Error("Failed to upload large file to OneDrive")
+    } catch (error: any) {
+      logger.error("上传大文件失败:")
+      logger.error(`错误类型: ${error.constructor.name}`)
+      logger.error(`错误信息: ${error.message}`)
+      
+      if (error.response) {
+        logger.error(`HTTP状态: ${error.response.status}`)
+        logger.error(`响应数据: ${JSON.stringify(error.response.data)}`)
+      }
+      
+      // 根据错误类型提供更具体的错误信息
+      if (error.message.includes("access token")) {
+        throw new Error("OneDrive访问令牌无效，请重新授权")
+      } else if (error.message.includes("upload session")) {
+        throw new Error("创建OneDrive上传会话失败，请检查网络连接和权限")
+      } else if (error.message.includes("upload chunk")) {
+        throw new Error("OneDrive文件分片上传失败，请重试")
+      }
+      
+      throw new Error(`Failed to upload large file to OneDrive: ${error.message}`)
     }
   }
 

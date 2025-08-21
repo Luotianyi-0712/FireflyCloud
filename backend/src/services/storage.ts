@@ -70,13 +70,13 @@ export class StorageService {
     return this.oneDriveService
   }
 
-  async uploadFile(file: File, filename: string): Promise<string> {
+  async uploadFile(file: File, filename: string, userId?: string): Promise<string> {
     logger.debug(`开始上传文件: ${filename} 到 ${this.config.storageType} 存储`)
 
     if (this.config.storageType === "r2" && this.s3Client) {
       return this.uploadToR2(file, filename)
     } else if (this.config.storageType === "onedrive" && this.oneDriveService) {
-      return this.uploadToOneDrive(file, filename)
+      return this.uploadToOneDrive(file, filename, userId)
     } else {
       return this.uploadToLocal(file, filename)
     }
@@ -217,10 +217,42 @@ export class StorageService {
     return filePath
   }
 
-  private async uploadToOneDrive(file: File, filename: string): Promise<string> {
+  private async uploadToOneDrive(file: File, filename: string, userId?: string): Promise<string> {
     if (!this.oneDriveService) throw new Error("OneDrive service not configured")
 
     logger.debug(`上传文件到 OneDrive: ${filename}`)
+
+    // 如果提供了userId，尝试获取用户的访问令牌
+    if (userId) {
+      try {
+        const { db } = require("../db")
+        const { oneDriveAuth } = require("../db/schema")
+        const { eq } = require("drizzle-orm")
+
+        const auth = await db
+          .select()
+          .from(oneDriveAuth)
+          .where(eq(oneDriveAuth.userId, userId))
+          .get()
+
+        if (!auth) {
+          throw new Error("OneDrive not authenticated for this user")
+        }
+
+        // 检查令牌是否过期
+        if (auth.expiresAt <= Date.now()) {
+          logger.warn(`OneDrive访问令牌已过期，用户: ${userId}`)
+          throw new Error("OneDrive access token expired, please re-authenticate")
+        }
+
+        // 设置访问令牌
+        this.oneDriveService.setAccessToken(auth.accessToken)
+        logger.debug(`OneDrive访问令牌已设置，用户: ${userId}`)
+      } catch (error) {
+        logger.error(`获取OneDrive访问令牌失败，用户: ${userId}`, error)
+        throw error
+      }
+    }
 
     // 上传到OneDrive根目录
     const result = await this.oneDriveService.uploadFile(file, "/", filename)
