@@ -211,3 +211,14 @@ export const roleQuotaConfig = sqliteTable("role_quota_config", {
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 })
+
+// 存储策略表
+export const storageStrategies = sqliteTable("storage_strategies", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull().unique(), // 策略名称
+  type: text("type").notNull(), // 存储类型：local, r2, onedrive, webdav
+  config: text("config").notNull(), // JSON格式的配置信息
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(false), // 是否为活跃策略
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+})
