@@ -4,6 +4,7 @@ import { db } from "../../db"
 import { files, folders, r2MountPoints, storageConfig } from "../../db/schema"
 import { and, eq } from "drizzle-orm"
 import { StorageService } from "../../services/storage"
+import { UserStorageStrategyService } from "../../services/user-storage-strategy"
 import { QuotaService } from "../../services/quota"
 import { logger } from "../../utils/logger"
 
@@ -36,14 +37,35 @@ export const uploadRoutes = new Elysia()
 
 				logger.info(`开始上传文件: ${file.name} (${file.size} bytes) 到文件夹: ${folderId || "root"} - 用户: ${user.userId}`)
 
-				const config = await db.select().from(storageConfig).get()
-				if (!config) {
-					logger.error("存储配置未找到")
-					set.status = 500
-					return { error: "Storage not configured" }
+				// 获取用户的存储策略
+				const { assignment, strategy } = await UserStorageStrategyService.getUserEffectiveStorageStrategy(user.userId)
+				
+				let config: any
+				let targetStorageType: string
+				let userFolder = ""
+
+				if (assignment && strategy) {
+					// 使用用户分配的存储策略
+					config = {
+						...strategy.config,
+						storageType: strategy.type
+					}
+					targetStorageType = strategy.type
+					userFolder = assignment.userFolder
+					logger.info(`使用用户存储策略: ${strategy.name} (${strategy.type}) - 用户文件夹: ${userFolder}`)
+				} else {
+					// 回退到全局存储配置
+					const globalConfig = await db.select().from(storageConfig).get()
+					if (!globalConfig) {
+						logger.error("存储配置未找到")
+						set.status = 500
+						return { error: "Storage not configured" }
+					}
+					config = globalConfig
+					targetStorageType = globalConfig.storageType
+					logger.info(`使用全局存储配置: ${targetStorageType}`)
 				}
 
-				let targetStorageType = config.storageType
 				let r2MountPoint: any = null
 				if (folderId) {
 					let currentFolderId: string | null | undefined = folderId
@@ -90,6 +112,7 @@ export const uploadRoutes = new Elysia()
 
 				let storagePath: string
 				if (targetStorageType === "r2" && r2MountPoint) {
+					// R2挂载点逻辑保持不变
 					let targetR2Path = currentR2Path || r2MountPoint.r2Path
 					const fullR2Path = targetR2Path ? `${targetR2Path}/${filename}` : filename
 					const r2Config = { ...config, storageType: "r2" as const }
@@ -97,7 +120,13 @@ export const uploadRoutes = new Elysia()
 					storagePath = await r2StorageService.uploadToR2Direct(file, fullR2Path)
 					logger.info(`文件上传到R2挂载点: ${r2MountPoint.mountName} -> ${fullR2Path}`)
 					logger.info(`当前R2路径: ${currentR2Path || '未指定，使用挂载点路径'}`)
+				} else if (userFolder && targetStorageType !== "local") {
+					// 使用用户专属文件夹上传到远程存储
+					const userFilePath = `${userFolder}/${filename}`
+					storagePath = await storageService.uploadFileToUserFolder(file, userFilePath, user.userId)
+					logger.info(`文件上传到用户专属文件夹: ${userFolder}/${filename}`)
 				} else {
+					// 默认上传逻辑
 					storagePath = await storageService.uploadFile(file, filename, user.userId)
 				}
 				logger.file('UPLOAD', file.name, file.size, true)

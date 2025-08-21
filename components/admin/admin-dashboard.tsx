@@ -15,6 +15,7 @@ import { SmtpConfiguration } from "./smtp-configuration"
 import { QuotaManagement } from "./quota-management"
 import { AdminSettings } from "./admin-settings"
 import { GoogleOAuthConfiguration } from "./google-oauth-configuration"
+import { UserStorageManagement } from "./user-storage-management"
 
 export function AdminDashboard() {
   const [stats, setStats] = useState<any>(null)
@@ -47,6 +48,12 @@ export function AdminDashboard() {
       label: "配额管理",
       icon: HardDrive,
       description: "管理用户存储配额"
+    },
+    {
+      value: "user-storage",
+      label: "用户存储策略",
+      icon: Cloud,
+      description: "为用户分配存储策略"
     },
     {
       value: "storage",
@@ -223,6 +230,10 @@ export function AdminDashboard() {
 
         <TabsContent value="oauth" className="space-y-4 animate-in fade-in-50 duration-300">
           {isTabLoaded("oauth") && <GoogleOAuthConfiguration />}
+        </TabsContent>
+
+        <TabsContent value="user-storage" className="space-y-4 animate-in fade-in-50 duration-300">
+          {isTabLoaded("user-storage") && <UserStorageManagement />}
         </TabsContent>
 
         <TabsContent value="admin-settings" className="space-y-4 animate-in fade-in-50 duration-300">

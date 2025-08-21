@@ -82,6 +82,134 @@ export class StorageService {
     }
   }
 
+  // 新增：上传文件到用户专属文件夹
+  async uploadFileToUserFolder(file: File, userFilePath: string, userId?: string): Promise<string> {
+    logger.debug(`开始上传文件到用户专属文件夹: ${userFilePath} (${this.config.storageType})`)
+
+    if (this.config.storageType === "r2" && this.s3Client) {
+      return this.uploadToR2Direct(file, userFilePath)
+    } else if (this.config.storageType === "onedrive" && this.oneDriveService) {
+      return this.uploadToOneDriveUserFolder(file, userFilePath, userId)
+    } else if (this.config.storageType === "webdav") {
+      return this.uploadToWebDAVUserFolder(file, userFilePath)
+    } else {
+      // 本地存储也支持用户文件夹
+      return this.uploadToLocalUserFolder(file, userFilePath)
+    }
+  }
+
+  // OneDrive用户文件夹上传
+  private async uploadToOneDriveUserFolder(file: File, userFilePath: string, userId?: string): Promise<string> {
+    if (!this.oneDriveService) throw new Error("OneDrive service not configured")
+
+    logger.debug(`上传文件到 OneDrive 用户文件夹: ${userFilePath}`)
+
+    // 使用存储策略中配置的OneDrive认证信息，而不是用户个人认证
+    try {
+      const { db } = require("../db")
+      const { storageStrategies } = require("../db/schema")
+      const { eq } = require("drizzle-orm")
+
+      // 获取OneDrive存储策略配置
+      let strategy = await db
+        .select()
+        .from(storageStrategies)
+        .where(eq(storageStrategies.type, 'onedrive'))
+        .get()
+
+      if (!strategy || !strategy.config) {
+        throw new Error("OneDrive storage strategy not configured")
+      }
+
+      let config = JSON.parse(strategy.config)
+      if (!config.accessToken) {
+        throw new Error("OneDrive access token not found in storage strategy")
+      }
+
+      // 检查令牌是否过期，如果过期则自动刷新
+      if (config.expiresAt && config.expiresAt <= Date.now()) {
+        logger.warn(`OneDrive存储策略访问令牌已过期，开始自动刷新`)
+        
+        if (!config.refreshToken) {
+          throw new Error("OneDrive refresh token not found in storage strategy")
+        }
+
+        try {
+          // 使用OneDriveService刷新令牌
+          const refreshedTokens = await this.oneDriveService.refreshToken(config.refreshToken)
+          
+          // 更新配置对象
+          config.accessToken = refreshedTokens.accessToken
+          config.refreshToken = refreshedTokens.refreshToken
+          config.expiresAt = refreshedTokens.expiresAt
+
+          // 更新数据库中的存储策略配置
+          await db
+            .update(storageStrategies)
+            .set({
+              config: JSON.stringify(config),
+              updatedAt: Date.now()
+            })
+            .where(eq(storageStrategies.id, strategy.id))
+
+          logger.info(`OneDrive存储策略访问令牌刷新成功`)
+        } catch (refreshError) {
+          logger.error(`刷新OneDrive存储策略访问令牌失败:`, refreshError)
+          throw new Error("OneDrive存储策略访问令牌已过期且刷新失败，请重新配置存储策略")
+        }
+      }
+
+      // 设置访问令牌
+      this.oneDriveService.setAccessToken(config.accessToken)
+      logger.debug(`OneDrive存储策略访问令牌已设置`)
+    } catch (error) {
+      logger.error(`获取OneDrive存储策略访问令牌失败:`, error)
+      throw error
+    }
+
+    // 解析用户文件路径，分离目录和文件名
+    const pathParts = userFilePath.split('/')
+    const filename = pathParts.pop() || file.name
+    const folderPath = '/' + pathParts.join('/')
+
+    // 确保用户文件夹存在
+    await this.oneDriveService.ensureFolderExists(folderPath)
+
+    // 上传到用户专属文件夹
+    const result = await this.oneDriveService.uploadFile(file, folderPath, filename)
+
+    logger.info(`文件成功上传到 OneDrive 用户文件夹: ${userFilePath}`)
+    return result.id // 返回OneDrive文件ID作为存储路径
+  }
+
+  // WebDAV用户文件夹上传
+  private async uploadToWebDAVUserFolder(file: File, userFilePath: string): Promise<string> {
+    // TODO: 实现WebDAV用户文件夹上传逻辑
+    logger.warn("WebDAV用户文件夹上传功能尚未实现")
+    throw new Error("WebDAV user folder upload not implemented yet")
+  }
+
+  // 本地存储用户文件夹上传
+  private async uploadToLocalUserFolder(file: File, userFilePath: string): Promise<string> {
+    logger.debug(`上传文件到本地用户文件夹: ${userFilePath}`)
+    
+    const uploadsDir = path.join(process.cwd(), "uploads")
+    const fullPath = path.join(uploadsDir, userFilePath)
+    const dirPath = path.dirname(fullPath)
+
+    // 确保目录存在
+    if (!existsSync(dirPath)) {
+      await mkdir(dirPath, { recursive: true })
+      logger.debug(`创建用户文件夹: ${dirPath}`)
+    }
+
+    const buffer = await file.arrayBuffer()
+    await writeFile(fullPath, new Uint8Array(buffer))
+    
+    logger.info(`文件成功上传到本地用户文件夹: ${fullPath}`)
+    return fullPath
+  }
+
   // 新增：上传文件到R2挂载点
   async uploadFileToR2Mount(file: File, filename: string, r2Path: string, targetFolderId: string, currentFolderId: string): Promise<string> {
     if (!this.s3Client) throw new Error("R2 client not configured")
@@ -222,42 +350,101 @@ export class StorageService {
 
     logger.debug(`上传文件到 OneDrive: ${filename}`)
 
-    // 如果提供了userId，尝试获取用户的访问令牌
+    // 使用管理员的OneDrive认证信息
+    try {
+      const { db } = require("../db")
+      const { oneDriveAuth, users } = require("../db/schema")
+      const { eq } = require("drizzle-orm")
+
+      // 查找管理员用户的OneDrive认证信息
+      let adminAuth = await db
+        .select({
+          id: oneDriveAuth.id,
+          accessToken: oneDriveAuth.accessToken,
+          refreshToken: oneDriveAuth.refreshToken,
+          expiresAt: oneDriveAuth.expiresAt,
+        })
+        .from(oneDriveAuth)
+        .innerJoin(users, eq(oneDriveAuth.userId, users.id))
+        .where(eq(users.role, 'admin'))
+        .get()
+
+      if (!adminAuth) {
+        throw new Error("管理员OneDrive认证信息未找到，请先在管理面板中完成OneDrive认证")
+      }
+
+      // 检查令牌是否过期，如果过期则自动刷新
+      if (adminAuth.expiresAt <= Date.now()) {
+        logger.warn(`管理员OneDrive访问令牌已过期，开始自动刷新`)
+        
+        try {
+          // 使用OneDriveService刷新令牌
+          const refreshedTokens = await this.oneDriveService.refreshToken(adminAuth.refreshToken)
+          
+          // 更新数据库中的令牌信息
+          await db
+            .update(oneDriveAuth)
+            .set({
+              accessToken: refreshedTokens.accessToken,
+              refreshToken: refreshedTokens.refreshToken,
+              expiresAt: refreshedTokens.expiresAt,
+              updatedAt: Date.now()
+            })
+            .where(eq(oneDriveAuth.id, adminAuth.id))
+
+          // 更新本地变量
+          adminAuth.accessToken = refreshedTokens.accessToken
+          adminAuth.refreshToken = refreshedTokens.refreshToken
+          adminAuth.expiresAt = refreshedTokens.expiresAt
+
+          logger.info(`管理员OneDrive访问令牌刷新成功`)
+        } catch (refreshError) {
+          logger.error(`刷新管理员OneDrive访问令牌失败:`, refreshError)
+          throw new Error("管理员OneDrive访问令牌已过期且刷新失败，请重新认证")
+        }
+      }
+
+      // 设置访问令牌
+      this.oneDriveService.setAccessToken(adminAuth.accessToken)
+      logger.debug(`已设置管理员OneDrive访问令牌`)
+    } catch (error) {
+      logger.error(`获取管理员OneDrive访问令牌失败:`, error)
+      throw error
+    }
+
+    // 为用户创建专属文件夹并上传
+    let userFolder = "/"
     if (userId) {
       try {
-        const { db } = require("../db")
-        const { oneDriveAuth } = require("../db/schema")
+        const { users } = require("../db/schema")
         const { eq } = require("drizzle-orm")
+        const { db } = require("../db")
 
-        const auth = await db
+        // 获取用户信息
+        const user = await db
           .select()
-          .from(oneDriveAuth)
-          .where(eq(oneDriveAuth.userId, userId))
+          .from(users)
+          .where(eq(users.id, userId))
           .get()
 
-        if (!auth) {
-          throw new Error("OneDrive not authenticated for this user")
+        if (user) {
+          // 生成用户专属文件夹路径
+          userFolder = `/users/${user.email.replace('@', '_at_')}_${userId.slice(-8)}`
+          
+          // 确保用户文件夹存在
+          await this.oneDriveService.ensureFolderExists(userFolder)
+          logger.info(`为用户创建/确认OneDrive专属文件夹: ${userFolder}`)
         }
-
-        // 检查令牌是否过期
-        if (auth.expiresAt <= Date.now()) {
-          logger.warn(`OneDrive访问令牌已过期，用户: ${userId}`)
-          throw new Error("OneDrive access token expired, please re-authenticate")
-        }
-
-        // 设置访问令牌
-        this.oneDriveService.setAccessToken(auth.accessToken)
-        logger.debug(`OneDrive访问令牌已设置，用户: ${userId}`)
-      } catch (error) {
-        logger.error(`获取OneDrive访问令牌失败，用户: ${userId}`, error)
-        throw error
+      } catch (folderError) {
+        logger.error(`创建用户专属文件夹失败，使用根目录:`, folderError)
+        userFolder = "/"
       }
     }
 
-    // 上传到OneDrive根目录
-    const result = await this.oneDriveService.uploadFile(file, "/", filename)
+    // 上传到用户专属文件夹
+    const result = await this.oneDriveService.uploadFile(file, userFolder, filename)
 
-    logger.info(`文件成功上传到 OneDrive: ${filename}`)
+    logger.info(`文件成功上传到 OneDrive 用户文件夹: ${userFolder}/${filename}`)
     return result.id // 返回OneDrive文件ID作为存储路径
   }
 

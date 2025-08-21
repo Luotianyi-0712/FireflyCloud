@@ -158,29 +158,90 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
         set.redirect = downloadUrl
         return
       } else if (config.storageType === "onedrive" || file.storageType === "onedrive") {
-        // 全局OneDrive存储
-        const auth = await db
-          .select()
-          .from(oneDriveAuth)
-          .where(eq(oneDriveAuth.userId, file.userId))
-          .get()
+        // OneDrive存储 - 使用管理员认证或存储策略认证
+        try {
+          const { UserStorageStrategyService } = require("../services/user-storage-strategy")
+          const { users } = require("../db/schema")
+          
+          // 首先尝试获取用户的存储策略
+          const { assignment, strategy } = await UserStorageStrategyService.getUserEffectiveStorageStrategy(file.userId)
+          
+          if (assignment && strategy && strategy.type === 'onedrive') {
+            // 使用存储策略中的OneDrive认证
+            logger.debug(`使用存储策略OneDrive认证下载文件: ${file.originalName}`)
+            
+            let config = JSON.parse(strategy.config)
+            
+            // 检查并刷新令牌
+            if (config.expiresAt && config.expiresAt <= Date.now()) {
+              logger.warn(`存储策略OneDrive访问令牌已过期，开始刷新`)
+              
+              const { OneDriveService } = require("../services/onedrive")
+              const oneDriveService = new OneDriveService({
+                clientId: config.clientId,
+                clientSecret: config.clientSecret,
+                tenantId: config.tenantId,
+              })
+              
+              const refreshedTokens = await oneDriveService.refreshToken(config.refreshToken)
+              
+              // 更新存储策略配置
+              config.accessToken = refreshedTokens.accessToken
+              config.refreshToken = refreshedTokens.refreshToken
+              config.expiresAt = refreshedTokens.expiresAt
+              
+              const { storageStrategies } = require("../db/schema")
+              await db
+                .update(storageStrategies)
+                .set({
+                  config: JSON.stringify(config),
+                  updatedAt: Date.now()
+                })
+                .where(eq(storageStrategies.id, strategy.id))
+              
+              logger.info(`存储策略OneDrive访问令牌刷新成功`)
+            }
+            
+            storageService.setOneDriveAccessToken(config.accessToken)
+          } else {
+            // 回退到管理员OneDrive认证
+            logger.debug(`使用管理员OneDrive认证下载文件: ${file.originalName}`)
+            
+            const adminAuth = await db
+              .select({
+                accessToken: oneDriveAuth.accessToken,
+                refreshToken: oneDriveAuth.refreshToken,
+                expiresAt: oneDriveAuth.expiresAt,
+              })
+              .from(oneDriveAuth)
+              .innerJoin(users, eq(oneDriveAuth.userId, users.id))
+              .where(eq(users.role, 'admin'))
+              .get()
 
-        if (!auth) {
-          logger.error(`用户OneDrive未认证: ${file.userId}`)
-          set.status = 401
-          return { error: "OneDrive not authenticated" }
+            if (!adminAuth) {
+              logger.error(`管理员OneDrive认证信息未找到`)
+              set.status = 401
+              return { error: "OneDrive not configured" }
+            }
+
+            // 检查管理员令牌是否过期
+            if (adminAuth.expiresAt <= Date.now()) {
+              logger.error(`管理员OneDrive访问令牌已过期`)
+              set.status = 401
+              return { error: "OneDrive access token expired, please re-authenticate in admin panel" }
+            }
+
+            storageService.setOneDriveAccessToken(adminAuth.accessToken)
+          }
+          
+          const downloadUrl = await storageService.getDownloadUrl(file.storagePath)
+          set.redirect = downloadUrl
+          return
+        } catch (error) {
+          logger.error("OneDrive下载认证失败:", error)
+          set.status = 500
+          return { error: "OneDrive authentication failed" }
         }
-
-        if (auth.expiresAt <= Date.now()) {
-          logger.error(`OneDrive访问令牌已过期: ${file.userId}`)
-          set.status = 401
-          return { error: "OneDrive access token expired" }
-        }
-
-        storageService.setOneDriveAccessToken(auth.accessToken)
-        const downloadUrl = await storageService.getDownloadUrl(file.storagePath)
-        set.redirect = downloadUrl
-        return
       } else {
         // 对于本地存储，直接返回文件流
         const fs = await import("fs")
@@ -366,29 +427,90 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
         set.redirect = downloadUrl
         return
       } else if (config.storageType === "onedrive" || file.storageType === "onedrive") {
-        // 全局OneDrive存储
-        const auth = await db
-          .select()
-          .from(oneDriveAuth)
-          .where(eq(oneDriveAuth.userId, file.userId))
-          .get()
+        // OneDrive存储 - 使用管理员认证或存储策略认证
+        try {
+          const { UserStorageStrategyService } = require("../services/user-storage-strategy")
+          const { users } = require("../db/schema")
+          
+          // 首先尝试获取用户的存储策略
+          const { assignment, strategy } = await UserStorageStrategyService.getUserEffectiveStorageStrategy(file.userId)
+          
+          if (assignment && strategy && strategy.type === 'onedrive') {
+            // 使用存储策略中的OneDrive认证
+            logger.debug(`使用存储策略OneDrive认证访问直链: ${file.originalName}`)
+            
+            let config = JSON.parse(strategy.config)
+            
+            // 检查并刷新令牌
+            if (config.expiresAt && config.expiresAt <= Date.now()) {
+              logger.warn(`存储策略OneDrive访问令牌已过期，开始刷新`)
+              
+              const { OneDriveService } = require("../services/onedrive")
+              const oneDriveService = new OneDriveService({
+                clientId: config.clientId,
+                clientSecret: config.clientSecret,
+                tenantId: config.tenantId,
+              })
+              
+              const refreshedTokens = await oneDriveService.refreshToken(config.refreshToken)
+              
+              // 更新存储策略配置
+              config.accessToken = refreshedTokens.accessToken
+              config.refreshToken = refreshedTokens.refreshToken
+              config.expiresAt = refreshedTokens.expiresAt
+              
+              const { storageStrategies } = require("../db/schema")
+              await db
+                .update(storageStrategies)
+                .set({
+                  config: JSON.stringify(config),
+                  updatedAt: Date.now()
+                })
+                .where(eq(storageStrategies.id, strategy.id))
+              
+              logger.info(`存储策略OneDrive访问令牌刷新成功`)
+            }
+            
+            storageService.setOneDriveAccessToken(config.accessToken)
+          } else {
+            // 回退到管理员OneDrive认证
+            logger.debug(`使用管理员OneDrive认证访问直链: ${file.originalName}`)
+            
+            const adminAuth = await db
+              .select({
+                accessToken: oneDriveAuth.accessToken,
+                refreshToken: oneDriveAuth.refreshToken,
+                expiresAt: oneDriveAuth.expiresAt,
+              })
+              .from(oneDriveAuth)
+              .innerJoin(users, eq(oneDriveAuth.userId, users.id))
+              .where(eq(users.role, 'admin'))
+              .get()
 
-        if (!auth) {
-          logger.error(`用户OneDrive未认证: ${file.userId}`)
-          set.status = 401
-          return { error: "OneDrive not authenticated" }
+            if (!adminAuth) {
+              logger.error(`管理员OneDrive认证信息未找到`)
+              set.status = 401
+              return { error: "OneDrive not configured" }
+            }
+
+            // 检查管理员令牌是否过期
+            if (adminAuth.expiresAt <= Date.now()) {
+              logger.error(`管理员OneDrive访问令牌已过期`)
+              set.status = 401
+              return { error: "OneDrive access token expired, please re-authenticate in admin panel" }
+            }
+
+            storageService.setOneDriveAccessToken(adminAuth.accessToken)
+          }
+          
+          const downloadUrl = await storageService.getDownloadUrl(file.storagePath)
+          set.redirect = downloadUrl
+          return
+        } catch (error) {
+          logger.error("OneDrive直链认证失败:", error)
+          set.status = 500
+          return { error: "OneDrive authentication failed" }
         }
-
-        if (auth.expiresAt <= Date.now()) {
-          logger.error(`OneDrive访问令牌已过期: ${file.userId}`)
-          set.status = 401
-          return { error: "OneDrive access token expired" }
-        }
-
-        storageService.setOneDriveAccessToken(auth.accessToken)
-        const downloadUrl = await storageService.getDownloadUrl(file.storagePath)
-        set.redirect = downloadUrl
-        return
       } else {
         // 对于本地存储，直接返回文件流
         const fs = await import("fs")

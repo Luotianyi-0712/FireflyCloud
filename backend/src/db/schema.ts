@@ -232,3 +232,22 @@ export const storageStrategies = sqliteTable("storage_strategies", {
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 })
+
+// 用户存储策略分配表
+export const userStorageAssignments = sqliteTable("user_storage_assignments", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  strategyId: text("strategy_id").notNull().references(() => storageStrategies.id, { onDelete: "cascade" }),
+  userFolder: text("user_folder").notNull(), // 用户在远程存储中的专属文件夹路径
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+})
+
+// 角色默认存储策略表
+export const roleStorageDefaults = sqliteTable("role_storage_defaults", {
+  id: text("id").primaryKey(),
+  role: text("role").notNull().unique(), // 角色名称（admin/user）
+  strategyId: text("strategy_id").notNull().references(() => storageStrategies.id, { onDelete: "cascade" }),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+})

@@ -594,4 +594,54 @@ export class OneDriveService {
       throw new Error("Failed to create OneDrive folder")
     }
   }
+
+  /**
+   * 确保文件夹存在，如果不存在则创建
+   */
+  async ensureFolderExists(folderPath: string): Promise<OneDriveItem> {
+    try {
+      logger.debug(`确保OneDrive文件夹存在: ${folderPath}`)
+
+      // 尝试获取文件夹信息
+      try {
+        const folderInfo = await this.getFolderInfo(folderPath)
+        logger.debug(`OneDrive文件夹已存在: ${folderPath}`)
+        return folderInfo
+      } catch (error) {
+        // 文件夹不存在，需要创建
+        logger.debug(`OneDrive文件夹不存在，开始创建: ${folderPath}`)
+      }
+
+      // 分解路径，逐级创建文件夹
+      const pathParts = folderPath.split('/').filter(part => part.length > 0)
+      let currentPath = ""
+      let currentFolder: OneDriveItem | null = null
+
+      for (const folderName of pathParts) {
+        const parentPath = currentPath || "/"
+        currentPath = currentPath ? `${currentPath}/${folderName}` : folderName
+
+        try {
+          // 尝试获取当前文件夹
+          currentFolder = await this.getFolderInfo(`/${currentPath}`)
+          logger.debug(`OneDrive文件夹已存在: /${currentPath}`)
+        } catch (error) {
+          // 文件夹不存在，创建它
+          logger.debug(`创建OneDrive文件夹: ${folderName} in ${parentPath}`)
+          currentFolder = await this.createFolder(parentPath, folderName)
+          logger.info(`OneDrive文件夹创建成功: /${currentPath}`)
+        }
+      }
+
+      if (!currentFolder) {
+        throw new Error("Failed to create or find folder")
+      }
+
+      logger.info(`OneDrive文件夹路径确保完成: ${folderPath}`)
+      return currentFolder
+    } catch (error) {
+      logger.error(`确保OneDrive文件夹存在失败: ${folderPath}`, error)
+      throw new Error(`Failed to ensure OneDrive folder exists: ${folderPath}`)
+    }
+  }
 }
