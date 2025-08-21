@@ -1,8 +1,8 @@
 import { Elysia } from "elysia"
 import { nanoid } from "nanoid"
 import { db } from "../db"
-import { files, storageConfig, downloadTokens, fileDirectLinks, directLinkAccessLogs } from "../db/schema"
-import { eq } from "drizzle-orm"
+import { files, storageConfig, downloadTokens, fileDirectLinks, directLinkAccessLogs, oneDriveMountPoints, oneDriveAuth } from "../db/schema"
+import { and, eq } from "drizzle-orm"
 import { StorageService } from "../services/storage"
 import { IPLocationService } from "../services/ip-location"
 import { IPBanService } from "../services/ip-ban"
@@ -90,12 +90,94 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
         return { error: "Storage not configured" }
       }
 
-      logger.file('DOWNLOAD', file.originalName, file.size, true)
+            logger.file('DOWNLOAD', file.originalName, file.size, true)
+      
+      // 检查文件是否存储在OneDrive挂载点中
+      
+      // 查找文件所在文件夹的OneDrive挂载点
+      const oneDriveMount = await db
+        .select()
+        .from(oneDriveMountPoints)
+        .where(and(
+          eq(oneDriveMountPoints.folderId, file.folderId || ""),
+          eq(oneDriveMountPoints.enabled, true)
+        ))
+        .get()
 
+      if (oneDriveMount) {
+        // 文件存储在OneDrive挂载点中，使用OneDrive API下载
+        logger.debug(`文件存储在OneDrive挂载点中: ${oneDriveMount.mountName}`)
+        
+        // 获取用户的OneDrive认证信息
+        const auth = await db
+          .select()
+          .from(oneDriveAuth)
+          .where(eq(oneDriveAuth.userId, file.userId))
+          .get()
+
+        if (!auth) {
+          logger.error(`用户OneDrive未认证: ${file.userId}`)
+          set.status = 401
+          return { error: "OneDrive not authenticated" }
+        }
+
+        // 检查令牌是否过期
+        if (auth.expiresAt <= Date.now()) {
+          logger.error(`OneDrive访问令牌已过期: ${file.userId}`)
+          set.status = 401
+          return { error: "OneDrive access token expired, please re-authenticate" }
+        }
+
+        try {
+          const storageService = new StorageService(config)
+          storageService.setOneDriveAccessToken(auth.accessToken)
+          
+          // 使用OneDrive API下载文件
+          const fileBuffer = await storageService.downloadFile(file.storagePath)
+          
+          // 设置响应头
+          set.headers["Content-Type"] = file.mimeType || "application/octet-stream"
+          set.headers["Content-Disposition"] = `attachment; filename="${encodeURIComponent(file.originalName)}"`
+          set.headers["Content-Length"] = fileBuffer.length.toString()
+          
+          logger.info(`OneDrive文件下载成功: ${file.originalName}`)
+          return fileBuffer
+        } catch (error) {
+          logger.error("OneDrive文件下载失败:", error)
+          set.status = 500
+          return { error: "OneDrive download failed" }
+        }
+      }
+
+      // 非OneDrive挂载点文件，使用原有逻辑
       const storageService = new StorageService(config)
       
-      if (config.storageType === "r2") {
+      if (config.storageType === "r2" || file.storageType === "r2") {
         // 对于R2存储，返回预签名URL进行重定向
+        const downloadUrl = await storageService.getDownloadUrl(file.storagePath)
+        set.redirect = downloadUrl
+        return
+      } else if (config.storageType === "onedrive" || file.storageType === "onedrive") {
+        // 全局OneDrive存储
+        const auth = await db
+          .select()
+          .from(oneDriveAuth)
+          .where(eq(oneDriveAuth.userId, file.userId))
+          .get()
+
+        if (!auth) {
+          logger.error(`用户OneDrive未认证: ${file.userId}`)
+          set.status = 401
+          return { error: "OneDrive not authenticated" }
+        }
+
+        if (auth.expiresAt <= Date.now()) {
+          logger.error(`OneDrive访问令牌已过期: ${file.userId}`)
+          set.status = 401
+          return { error: "OneDrive access token expired" }
+        }
+
+        storageService.setOneDriveAccessToken(auth.accessToken)
         const downloadUrl = await storageService.getDownloadUrl(file.storagePath)
         set.redirect = downloadUrl
         return
@@ -215,13 +297,95 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
         return { error: "Storage not configured" }
       }
 
-      logger.file('DIRECT_DOWNLOAD', file.originalName, file.size, true)
+            logger.file('DIRECT_DOWNLOAD', file.originalName, file.size, true)
       logger.info(`文件直链访问: ${file.originalName} - 用户: ${linkRecord.userId} - 访问次数: ${linkRecord.accessCount + 1}`)
+      
+      // 检查文件是否存储在OneDrive挂载点中
+      
+      // 查找文件所在文件夹的OneDrive挂载点
+      const oneDriveMount = await db
+        .select()
+        .from(oneDriveMountPoints)
+        .where(and(
+          eq(oneDriveMountPoints.folderId, file.folderId || ""),
+          eq(oneDriveMountPoints.enabled, true)
+        ))
+        .get()
 
+      if (oneDriveMount) {
+        // 文件存储在OneDrive挂载点中，使用OneDrive API下载
+        logger.debug(`直链文件存储在OneDrive挂载点中: ${oneDriveMount.mountName}`)
+        
+        // 获取用户的OneDrive认证信息
+        const auth = await db
+          .select()
+          .from(oneDriveAuth)
+          .where(eq(oneDriveAuth.userId, file.userId))
+          .get()
+
+        if (!auth) {
+          logger.error(`用户OneDrive未认证: ${file.userId}`)
+          set.status = 401
+          return { error: "OneDrive not authenticated" }
+        }
+
+        // 检查令牌是否过期
+        if (auth.expiresAt <= Date.now()) {
+          logger.error(`OneDrive访问令牌已过期: ${file.userId}`)
+          set.status = 401
+          return { error: "OneDrive access token expired, please re-authenticate" }
+        }
+
+        try {
+          const storageService = new StorageService(config)
+          storageService.setOneDriveAccessToken(auth.accessToken)
+          
+          // 使用OneDrive API下载文件
+          const fileBuffer = await storageService.downloadFile(file.storagePath)
+          
+          // 设置响应头
+          set.headers["Content-Type"] = file.mimeType || "application/octet-stream"
+          set.headers["Content-Disposition"] = `attachment; filename="${encodeURIComponent(file.originalName)}"`
+          set.headers["Content-Length"] = fileBuffer.length.toString()
+          
+          logger.info(`OneDrive直链文件下载成功: ${file.originalName}`)
+          return fileBuffer
+        } catch (error) {
+          logger.error("OneDrive直链文件下载失败:", error)
+          set.status = 500
+          return { error: "OneDrive download failed" }
+        }
+      }
+
+      // 非OneDrive挂载点文件，使用原有逻辑
       const storageService = new StorageService(config)
 
-      if (config.storageType === "r2") {
+      if (config.storageType === "r2" || file.storageType === "r2") {
         // 对于R2存储，返回预签名URL进行重定向
+        const downloadUrl = await storageService.getDownloadUrl(file.storagePath)
+        set.redirect = downloadUrl
+        return
+      } else if (config.storageType === "onedrive" || file.storageType === "onedrive") {
+        // 全局OneDrive存储
+        const auth = await db
+          .select()
+          .from(oneDriveAuth)
+          .where(eq(oneDriveAuth.userId, file.userId))
+          .get()
+
+        if (!auth) {
+          logger.error(`用户OneDrive未认证: ${file.userId}`)
+          set.status = 401
+          return { error: "OneDrive not authenticated" }
+        }
+
+        if (auth.expiresAt <= Date.now()) {
+          logger.error(`OneDrive访问令牌已过期: ${file.userId}`)
+          set.status = 401
+          return { error: "OneDrive access token expired" }
+        }
+
+        storageService.setOneDriveAccessToken(auth.accessToken)
         const downloadUrl = await storageService.getDownloadUrl(file.storagePath)
         set.redirect = downloadUrl
         return

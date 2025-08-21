@@ -66,6 +66,8 @@ export function OneDriveMountManagement() {
 		used: number
 		available: number
 	} | null>(null)
+	const [tokenLastUpdated, setTokenLastUpdated] = useState<number | null>(null)
+	const [tokenRefreshed, setTokenRefreshed] = useState<boolean>(false)
 
 
 	const redirectUri = useMemo(() => {
@@ -119,10 +121,16 @@ export function OneDriveMountManagement() {
 				if (data.connected && data.storageInfo) {
 					setStorageInfo(data.storageInfo)
 				}
+				if (data.lastUpdated) {
+					setTokenLastUpdated(Number(data.lastUpdated))
+				}
+				setTokenRefreshed(!!data.refreshed)
 			}
 		} catch (_) {
 			setOneDriveConnected(false)
 			setStorageInfo(null)
+			setTokenLastUpdated(null)
+			setTokenRefreshed(false)
 		}
 	}
 
@@ -264,6 +272,12 @@ export function OneDriveMountManagement() {
 		return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 	}
 
+	const formatTime = (ts: number) => {
+		try {
+			return new Date(ts).toLocaleString()
+		} catch { return '' }
+	}
+
 
 	if (loading) {
 		return (
@@ -372,11 +386,16 @@ export function OneDriveMountManagement() {
 											使用率：{((storageInfo.used / storageInfo.total) * 100).toFixed(1)}%
 										</p>
 									</div>
+									{tokenLastUpdated && (
+										<p className="text-xs text-muted-foreground mt-2 text-center">
+											令牌最后更新时间：{formatTime(tokenLastUpdated)}{tokenRefreshed ? "（本次已自动刷新）" : ""}
+										</p>
+									)}
+																										</div>
+									</div>
 								</div>
-							</div>
-						</div>
-					</CardContent>
-				</Card>
+							</CardContent>
+					</Card>
 			)}
 
 			{error && (
