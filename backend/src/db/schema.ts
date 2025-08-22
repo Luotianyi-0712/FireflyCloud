@@ -132,6 +132,14 @@ export const googleOAuthConfig = sqliteTable("google_oauth_config", {
   updatedAt: integer("updated_at").notNull(),
 })
 
+// 站点配置表（标题、描述等）
+export const siteConfig = sqliteTable("site_config", {
+  id: integer("id").primaryKey().default(1),
+  title: text("title"),
+  description: text("description"),
+  updatedAt: integer("updated_at").notNull(),
+})
+
 export const downloadTokens = sqliteTable("download_tokens", {
   id: text("id").primaryKey(),
   fileId: text("file_id").notNull(),

@@ -5,7 +5,7 @@ import { useAuth } from "@/components/auth/auth-provider"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Users, Files, Settings, Mail, Cloud, HardDrive, Key, ChevronDown } from "lucide-react"
+import { Users, Files, Settings, Mail, Cloud, HardDrive, Key, ChevronDown, Globe } from "lucide-react"
 import { useIsMobile } from "@/components/ui/use-mobile"
 import { AdminStats } from "./admin-stats"
 import { UserManagement } from "./user-management"
@@ -16,6 +16,7 @@ import { QuotaManagement } from "./quota-management"
 import { AdminSettings } from "./admin-settings"
 import { GoogleOAuthConfiguration } from "./google-oauth-configuration"
 import { UserStorageManagement } from "./user-storage-management"
+import { SiteSettings } from "./site-settings"
 
 export function AdminDashboard() {
   const [stats, setStats] = useState<any>(null)
@@ -60,6 +61,12 @@ export function AdminDashboard() {
       label: "存储设置",
       icon: Settings,
       description: "配置存储相关设置"
+    },
+    {
+      value: "site",
+      label: "站点设置",
+      icon: Globe,
+      description: "配置站点标题和描述"
     },
     {
       value: "smtp",
@@ -170,7 +177,7 @@ export function AdminDashboard() {
           </div>
         ) : (
           /* 桌面端使用响应式网格 */
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-1 h-auto p-1 transition-all duration-200">
+          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-1 h-auto p-1 transition-all duration-200">
             {tabsConfig.map((tab) => {
               const Icon = tab.icon
               return (
@@ -222,6 +229,10 @@ export function AdminDashboard() {
 
         <TabsContent value="storage" className="space-y-4 animate-in fade-in-50 duration-300">
           {isTabLoaded("storage") && <StorageConfiguration />}
+        </TabsContent>
+
+        <TabsContent value="site" className="space-y-4 animate-in fade-in-50 duration-300">
+          {isTabLoaded("site") && <SiteSettings />}
         </TabsContent>
 
         <TabsContent value="smtp" className="space-y-4 animate-in fade-in-50 duration-300">

@@ -40,6 +40,7 @@ import {
   Terminal,
 } from "lucide-react"
 import Link from "next/link"
+import { useSiteConfig } from "@/components/providers"
 
 const navigationItems = [
   {
@@ -98,6 +99,7 @@ const adminItems = [
 export function AppSidebar() {
   const { user, logout } = useAuth()
   const pathname = usePathname()
+  const { title, description } = useSiteConfig()
 
   if (!user) return null
 
@@ -112,8 +114,8 @@ export function AppSidebar() {
                   <Cloud className="size-4" />
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">FireflyCloud</span>
-                  <span className="truncate text-xs">云存储</span>
+                  <span className="truncate font-semibold">{title || 'FireflyCloud'}</span>
+                  <span className="truncate text-xs">{description || '云存储'}</span>
                 </div>
               </Link>
             </SidebarMenuButton>

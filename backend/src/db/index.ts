@@ -67,6 +67,13 @@ async function initializeDatabase() {
         updated_at INTEGER NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS site_config (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        title TEXT,
+        description TEXT,
+        updated_at INTEGER NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS storage_strategies (
         id TEXT PRIMARY KEY,
         name TEXT UNIQUE NOT NULL,
@@ -371,6 +378,19 @@ async function initializeDatabase() {
     sqlite.exec(`
       INSERT OR IGNORE INTO storage_config (storage_type, updated_at)
       VALUES ('local', ${Date.now()});
+    `)
+
+    // 初始化默认记录
+    const now = Date.now()
+    sqlite.exec(`
+      INSERT OR IGNORE INTO smtp_config (id, enabled, host, port, user, pass, secure, email_template, updated_at)
+      VALUES (1, 0, '', 465, '', '', 1, '', ${now});
+
+      INSERT OR IGNORE INTO storage_config (id, storage_type, enable_mixed_mode, updated_at)
+      VALUES (1, 'local', 0, ${now});
+
+      INSERT OR IGNORE INTO site_config (id, title, description, updated_at)
+      VALUES (1, 'FireflyCloud', '云存储', ${now});
     `)
 
     // 新增：插入 google_oauth_config 默认数据

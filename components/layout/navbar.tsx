@@ -12,16 +12,18 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Cloud, LogOut, Settings, User } from "lucide-react"
 import Link from "next/link"
+import { useSiteConfig } from "@/components/providers"
 
 export function Navbar() {
   const { user, logout } = useAuth()
+  const { title } = useSiteConfig()
 
   return (
     <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
         <Link href="/dashboard" className="flex items-center gap-2 font-bold text-xl">
           <Cloud className="h-6 w-6 text-primary" />
-          NetDisk
+          {title || 'FireflyCloud'}
         </Link>
 
         <div className="flex items-center gap-4">

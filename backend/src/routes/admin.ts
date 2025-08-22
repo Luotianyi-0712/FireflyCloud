@@ -9,6 +9,8 @@ import { sendVerificationEmail } from "../services/email"
 import { StorageService } from "../services/storage"
 import { logger } from "../utils/logger"
 import { hashPassword, verifyPassword, validatePasswordStrength } from "../utils/password"
+import { siteConfig } from "../db/schema"
+import { QuotaService } from "../services/quota"
 
 export const adminRoutes = new Elysia({ prefix: "/admin" })
   .use(
@@ -32,6 +34,46 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
 
     return { user: payload }
   })
+  // 站点配置：获取
+  .get("/site-config", async ({ set }) => {
+    try {
+      const siteCfg = await db.select().from(siteConfig).get()
+      return {
+        title: siteCfg?.title || "FireflyCloud",
+        description: siteCfg?.description || "云存储"
+      }
+    } catch (error) {
+      logger.error("Failed to get site config:", error as unknown as Error)
+      set.status = 500
+      return { error: "Failed to get site configuration" }
+    }
+  })
+  // 站点配置：更新
+  .put("/site-config", async ({ body, set }) => {
+    try {
+      const { title, description } = body
+      const now = Date.now()
+
+      const existing = await db.select().from(siteConfig).get()
+      if (existing) {
+        await db.update(siteConfig).set({ title, description, updatedAt: now }).where(eq(siteConfig.id, 1))
+      } else {
+        await db.insert(siteConfig).values({ id: 1, title, description, updatedAt: now })
+      }
+
+      logger.info("Site configuration updated")
+      return { message: "Site configuration updated" }
+    } catch (error) {
+      logger.error("Failed to update site config:", error as unknown as Error)
+      set.status = 500
+      return { error: "Failed to update site configuration" }
+    }
+  }, {
+    body: t.Object({
+      title: t.String(),
+      description: t.String()
+    })
+  })
   .get("/stats", async () => {
     try {
       const totalUsers = await db.select().from(users).all()
@@ -45,7 +87,7 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
       const localStorage = localFiles.reduce((sum, file) => sum + file.size, 0)
 
       // 获取存储配置
-      const config = await db.select().from(storageConfig).get()
+      const storageCfg = await db.select().from(storageConfig).get()
 
       // 初始化R2实际使用量
       let r2ActualStorage = 0
@@ -53,10 +95,10 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
       let r2StorageError: string | undefined
 
       // 如果配置了R2存储，查询实际使用量
-      if (config && (config.storageType === "r2" || config.enableMixedMode) && config.r2Endpoint) {
+      if (storageCfg && (storageCfg.storageType === "r2" || storageCfg.enableMixedMode) && storageCfg.r2Endpoint) {
         try {
           logger.debug("查询R2存储桶实际使用量")
-          const storageService = new StorageService(config)
+          const storageService = new StorageService(storageCfg)
           const r2Stats = await storageService.calculateR2StorageUsage()
 
           if (r2Stats.error) {
@@ -68,7 +110,7 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
           }
         } catch (error) {
           r2StorageError = error instanceof Error ? error.message : "Unknown error"
-          logger.error("查询R2存储使用量失败:", error)
+          logger.error("查询R2存储使用量失败:", error as unknown as Error)
         }
       }
 
@@ -98,11 +140,11 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
         regularUsers: totalUsers.filter((u) => u.role === "user").length,
 
         // 存储配置信息
-        storageType: config?.storageType || "local",
-        enableMixedMode: config?.enableMixedMode || false,
+        storageType: storageCfg?.storageType || "local",
+        enableMixedMode: storageCfg?.enableMixedMode || false,
       }
     } catch (error) {
-      logger.error("获取统计信息失败:", error)
+      logger.error("获取统计信息失败:", (error as unknown as Error))
       return {
         totalUsers: 0,
         totalFiles: 0,
@@ -302,9 +344,10 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
           return { error: "Failed to send test email" }
         }
       } catch (error) {
-        logger.error("Failed to send test email:", error)
+        const err = error as unknown as Error
+        logger.error("Failed to send test email:", err)
         set.status = 500
-        return { error: `发送测试邮件失败: ${error.message}` }
+        return { error: `发送测试邮件失败: ${err.message}` }
       }
     },
     {
@@ -397,12 +440,13 @@ async function sendTestEmail(email: string, code: string, config: any): Promise<
     logger.info(`测试邮件发送成功: ${result.messageId}`)
     return true
   } catch (error) {
-    logger.email(email, 'SMTP 测试邮件', false, error)
-    logger.error('测试邮件发送失败:', error)
+    const err = error as unknown as Error & { code?: string; command?: string }
+    logger.email(email, 'SMTP 测试邮件', false, err)
+    logger.error('测试邮件发送失败:', err)
     logger.debug('错误详情:', {
-      message: error.message,
-      code: error.code,
-      command: error.command
+      message: err.message,
+      code: err.code,
+      command: err.command
     })
     return false
   }
@@ -1086,7 +1130,8 @@ adminRoutes
       logger.info(`管理员 ${user.email} 请求修改密码`)
 
       // 获取当前管理员信息
-      const admin = await db.select().from(users).where(eq(users.id, user.userId)).get()
+      const adminId = String((user as any).userId)
+      const admin = await db.select().from(users).where(eq(users.id, adminId)).get()
       if (!admin) {
         set.status = 404
         return { error: "管理员账户不存在" }
@@ -1126,7 +1171,7 @@ adminRoutes
           password: hashedNewPassword,
           updatedAt: Date.now(),
         })
-        .where(eq(users.id, user.userId))
+        .where(eq(users.id, String((user as any).userId)))
 
       logger.database('UPDATE', 'users')
       logger.info(`管理员 ${user.email} 密码修改成功`)
@@ -1136,7 +1181,7 @@ adminRoutes
         passwordStrength: passwordValidation.strength
       }
     } catch (error) {
-      logger.error("管理员密码修改失败:", error)
+      logger.error("管理员密码修改失败:", (error as unknown as Error))
       set.status = 500
       return { error: "密码修改失败" }
     }
