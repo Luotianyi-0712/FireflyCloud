@@ -17,6 +17,7 @@ export const sharesMgmtRoutes = new Elysia()
 					pickupCode: fileShares.pickupCode,
 					requireLogin: fileShares.requireLogin,
 					enabled: fileShares.enabled,
+					adminDisabled: fileShares.adminDisabled,
 					accessCount: fileShares.accessCount,
 					expiresAt: fileShares.expiresAt,
 					createdAt: fileShares.createdAt,
@@ -50,6 +51,11 @@ export const sharesMgmtRoutes = new Elysia()
 				logger.warn(`分享记录未找到: ${params.shareId} - 用户: ${user.userId}`)
 				set.status = 404
 				return { error: "Share not found" }
+			}
+			// 管理员禁用时，用户不能启用
+			if (shareRecord.adminDisabled && enabled) {
+				set.status = 403
+				return { error: "该分享因违规已被管理员禁用，无法启用" }
 			}
 			await db.update(fileShares).set({ enabled, updatedAt: Date.now() }).where(eq(fileShares.id, params.shareId))
 			logger.info(`更新分享状态: ${params.shareId} - 启用: ${enabled} - 用户: ${user.userId}`)

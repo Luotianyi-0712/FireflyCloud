@@ -44,6 +44,7 @@ export const directLinksRoutes = new Elysia({ prefix: "/direct-links" })
           directName: fileDirectLinks.directName,
           token: fileDirectLinks.token,
           enabled: fileDirectLinks.enabled,
+          adminDisabled: fileDirectLinks.adminDisabled,
           accessCount: fileDirectLinks.accessCount,
           createdAt: fileDirectLinks.createdAt,
           updatedAt: fileDirectLinks.updatedAt,
@@ -63,6 +64,7 @@ export const directLinksRoutes = new Elysia({ prefix: "/direct-links" })
           directName: link.directName,
           token: link.token,
           enabled: link.enabled,
+          adminDisabled: link.adminDisabled,
           accessCount: link.accessCount,
           createdAt: link.createdAt,
           updatedAt: link.updatedAt,
@@ -275,6 +277,12 @@ export const directLinksRoutes = new Elysia({ prefix: "/direct-links" })
         logger.warn(`直链未找到或无权限: ${linkId} - 用户: ${user.userId}`)
         set.status = 404
         return { error: "Direct link not found" }
+      }
+
+      // 如果被管理员禁用，普通用户不可启用
+      if (directLink.adminDisabled && enabled) {
+        set.status = 403
+        return { error: "该直链因违规已被管理员禁用，无法启用" }
       }
 
       // 更新直链状态

@@ -2,7 +2,7 @@ import { Elysia, t } from "elysia"
 import { jwt } from "@elysiajs/jwt"
 import { bearer } from "@elysiajs/bearer"
 import { db } from "../db"
-import { users, files, smtpConfig, emailVerificationCodes, storageConfig, r2MountPoints, folders, userQuotas, roleQuotaConfig } from "../db/schema"
+import { users, files, smtpConfig, emailVerificationCodes, storageConfig, r2MountPoints, folders, userQuotas, roleQuotaConfig, fileDirectLinks, fileShares } from "../db/schema"
 import { eq, desc, and, like, or } from "drizzle-orm"
 import { nanoid } from "nanoid"
 import { sendVerificationEmail } from "../services/email"
@@ -73,6 +73,100 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
       title: t.String(),
       description: t.String()
     })
+  })
+  // 列出所有直链（管理员）
+  .get("/direct-links", async () => {
+    const links = await db
+      .select({
+        id: fileDirectLinks.id,
+        userId: fileDirectLinks.userId,
+        fileId: fileDirectLinks.fileId,
+        directName: fileDirectLinks.directName,
+        enabled: fileDirectLinks.enabled,
+        adminDisabled: fileDirectLinks.adminDisabled,
+        accessCount: fileDirectLinks.accessCount,
+        createdAt: fileDirectLinks.createdAt,
+        updatedAt: fileDirectLinks.updatedAt,
+        fileName: files.originalName,
+        fileSize: files.size,
+        fileMimeType: files.mimeType,
+        userEmail: users.email,
+      })
+      .from(fileDirectLinks)
+      .leftJoin(files, eq(fileDirectLinks.fileId, files.id))
+      .leftJoin(users, eq(fileDirectLinks.userId, users.id))
+      .orderBy(desc(fileDirectLinks.createdAt))
+
+    return { directLinks: links }
+  })
+  // 管理员切换直链（管理员禁用/启用）
+  .put("/direct-links/:id/toggle", async ({ params, body, set }) => {
+    const { id } = params as { id: string }
+    const { adminDisabled } = body as { adminDisabled: boolean }
+    try {
+      const now = Date.now()
+      if (adminDisabled) {
+        await db.update(fileDirectLinks).set({ adminDisabled: 1, enabled: 0, updatedAt: now }).where(eq(fileDirectLinks.id, id))
+      } else {
+        await db.update(fileDirectLinks).set({ adminDisabled: 0, enabled: 1, updatedAt: now }).where(eq(fileDirectLinks.id, id))
+      }
+      return { success: true }
+    } catch (error) {
+      logger.error("Admin toggle direct link failed:", error)
+      set.status = 500
+      return { error: "Failed to toggle direct link" }
+    }
+  }, {
+    params: t.Object({ id: t.String() }),
+    body: t.Object({ adminDisabled: t.Boolean() })
+  })
+  // 列出所有分享（管理员）
+  .get("/shares", async () => {
+    const shares = await db
+      .select({
+        id: fileShares.id,
+        userId: fileShares.userId,
+        fileId: fileShares.fileId,
+        shareToken: fileShares.shareToken,
+        pickupCode: fileShares.pickupCode,
+        enabled: fileShares.enabled,
+        adminDisabled: fileShares.adminDisabled,
+        accessCount: fileShares.accessCount,
+        expiresAt: fileShares.expiresAt,
+        createdAt: fileShares.createdAt,
+        updatedAt: fileShares.updatedAt,
+        fileName: files.originalName,
+        fileSize: files.size,
+        fileMimeType: files.mimeType,
+        userEmail: users.email,
+      })
+      .from(fileShares)
+      .leftJoin(files, eq(fileShares.fileId, files.id))
+      .leftJoin(users, eq(fileShares.userId, users.id))
+      .orderBy(desc(fileShares.createdAt))
+
+    return { shares }
+  })
+  // 管理员切换分享
+  .put("/shares/:id/toggle", async ({ params, body, set }) => {
+    const { id } = params as { id: string }
+    const { adminDisabled } = body as { adminDisabled: boolean }
+    try {
+      const now = Date.now()
+      if (adminDisabled) {
+        await db.update(fileShares).set({ adminDisabled: 1, enabled: 0, updatedAt: now }).where(eq(fileShares.id, id))
+      } else {
+        await db.update(fileShares).set({ adminDisabled: 0, enabled: 1, updatedAt: now }).where(eq(fileShares.id, id))
+      }
+      return { success: true }
+    } catch (error) {
+      logger.error("Admin toggle share failed:", error)
+      set.status = 500
+      return { error: "Failed to toggle share" }
+    }
+  }, {
+    params: t.Object({ id: t.String() }),
+    body: t.Object({ adminDisabled: t.Boolean() })
   })
   .get("/stats", async () => {
     try {

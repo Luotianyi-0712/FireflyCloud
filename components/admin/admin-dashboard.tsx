@@ -18,68 +18,26 @@ import { GoogleOAuthConfiguration } from "./google-oauth-configuration"
 import { UserStorageManagement } from "./user-storage-management"
 import { SiteSettings } from "./site-settings"
 
+type TabConfig = {
+  value: string
+  label: string
+  icon: any
+  description: string
+  count?: number
+}
+
 export function AdminDashboard() {
   const [stats, setStats] = useState<any>(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState("users")
-  const [loadedTabs, setLoadedTabs] = useState<Set<string>>(new Set(["users"]))
+  const [activeTab, setActiveTab] = useState("admin-settings")
+  const [loadedTabs, setLoadedTabs] = useState<Set<string>>(new Set(["admin-settings"]))
   const { token } = useAuth()
   const isMobile = useIsMobile()
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
 
   // Tab配置数据
-  const tabsConfig = [
-    {
-      value: "users",
-      label: "用户",
-      icon: Users,
-      count: stats?.totalUsers || 0,
-      description: "管理系统用户及其访问权限"
-    },
-    {
-      value: "files",
-      label: "文件",
-      icon: Files,
-      count: stats?.totalFiles || 0,
-      description: "查看和管理系统中的所有文件"
-    },
-    {
-      value: "quotas",
-      label: "配额管理",
-      icon: HardDrive,
-      description: "管理用户存储配额"
-    },
-    {
-      value: "user-storage",
-      label: "用户存储策略",
-      icon: Cloud,
-      description: "为用户分配存储策略"
-    },
-    {
-      value: "storage",
-      label: "存储设置",
-      icon: Settings,
-      description: "配置存储相关设置"
-    },
-    {
-      value: "site",
-      label: "站点设置",
-      icon: Globe,
-      description: "配置站点标题和描述"
-    },
-    {
-      value: "smtp",
-      label: "邮件配置",
-      icon: Mail,
-      description: "配置SMTP邮件服务"
-    },
-    {
-      value: "oauth",
-      label: "OAuth配置",
-      icon: Cloud,
-      description: "配置谷歌OAuth登录"
-    },
+  const tabsConfig: TabConfig[] = [
     {
       value: "admin-settings",
       label: "管理员设置",
@@ -199,53 +157,7 @@ export function AdminDashboard() {
           </TabsList>
         )}
 
-        <TabsContent value="users" className="space-y-4 animate-in fade-in-50 duration-300">
-          <Card>
-            <CardHeader>
-              <CardTitle>用户管理</CardTitle>
-              <CardDescription>管理系统用户及其访问权限</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {isTabLoaded("users") && <UserManagement onUserDeleted={fetchStats} />}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="files" className="space-y-4 animate-in fade-in-50 duration-300">
-          <Card>
-            <CardHeader>
-              <CardTitle>文件管理</CardTitle>
-              <CardDescription>查看和管理系统中的所有文件</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {isTabLoaded("files") && <FileManagement onFileDeleted={fetchStats} />}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="quotas" className="space-y-4 animate-in fade-in-50 duration-300">
-          {isTabLoaded("quotas") && <QuotaManagement />}
-        </TabsContent>
-
-        <TabsContent value="storage" className="space-y-4 animate-in fade-in-50 duration-300">
-          {isTabLoaded("storage") && <StorageConfiguration />}
-        </TabsContent>
-
-        <TabsContent value="site" className="space-y-4 animate-in fade-in-50 duration-300">
-          {isTabLoaded("site") && <SiteSettings />}
-        </TabsContent>
-
-        <TabsContent value="smtp" className="space-y-4 animate-in fade-in-50 duration-300">
-          {isTabLoaded("smtp") && <SmtpConfiguration />}
-        </TabsContent>
-
-        <TabsContent value="oauth" className="space-y-4 animate-in fade-in-50 duration-300">
-          {isTabLoaded("oauth") && <GoogleOAuthConfiguration />}
-        </TabsContent>
-
-        <TabsContent value="user-storage" className="space-y-4 animate-in fade-in-50 duration-300">
-          {isTabLoaded("user-storage") && <UserStorageManagement />}
-        </TabsContent>
+        {/* "OAuth配置" 已迁移为独立页面 /admin/oauth，此处移除 */}
 
         <TabsContent value="admin-settings" className="space-y-4 animate-in fade-in-50 duration-300">
           {isTabLoaded("admin-settings") && <AdminSettings />}

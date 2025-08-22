@@ -2,6 +2,7 @@
 
 import { useAuth } from "@/components/auth/auth-provider"
 import { usePathname } from "next/navigation"
+import { useEffect, useState } from "react"
 import {
   Sidebar,
   SidebarContent,
@@ -14,6 +15,10 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  SidebarMenuSub,
+  SidebarMenuSubItem,
+  SidebarMenuSubButton,
+  SidebarMenuAction,
 } from "@/components/ui/sidebar"
 import {
   DropdownMenu,
@@ -24,6 +29,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import { Progress } from "@/components/ui/progress"
 import {
   Cloud,
   Files,
@@ -38,6 +44,10 @@ import {
   Share2,
   Link as LinkIcon,
   Terminal,
+  Globe,
+  Mail,
+  ChevronRight,
+  HardDrive as HardDriveIcon,
 } from "lucide-react"
 import Link from "next/link"
 import { useSiteConfig } from "@/components/providers"
@@ -75,6 +85,48 @@ const adminItems = [
     url: "/admin",
     icon: Settings,
     description: "系统管理",
+    children: [
+      {
+        title: "总览",
+        url: "/admin",
+        icon: Settings,
+      },
+      {
+        title: "用户管理",
+        url: "/admin/users",
+        icon: Users,
+      },
+      {
+        title: "文件",
+        url: "/admin/files",
+        icon: Files,
+      },
+      {
+        title: "配额管理",
+        url: "/admin/quotas",
+        icon: HardDrive,
+      },
+      {
+        title: "存储设置",
+        url: "/admin/storage",
+        icon: Settings,
+      },
+      {
+        title: "站点设置",
+        url: "/admin/site",
+        icon: Globe,
+      },
+      {
+        title: "邮件配置",
+        url: "/admin/smtp",
+        icon: Mail,
+      },
+      {
+        title: "OAuth配置",
+        url: "/admin/oauth",
+        icon: Cloud,
+      }
+    ]
   },
   {
     title: "挂载管理",
@@ -97,9 +149,41 @@ const adminItems = [
 ]
 
 export function AppSidebar() {
-  const { user, logout } = useAuth()
+  const { user, logout, token } = useAuth()
   const pathname = usePathname()
   const { title, description } = useSiteConfig()
+  const [adminOpen, setAdminOpen] = useState(pathname.startsWith('/admin'))
+
+  // Quota state
+  const [usagePercent, setUsagePercent] = useState<number | null>(null)
+  const [quotaText, setQuotaText] = useState<string>("")
+
+  useEffect(() => {
+    if (pathname.startsWith('/admin')) setAdminOpen(true)
+  }, [pathname])
+
+  useEffect(() => {
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
+    const fetchQuota = async () => {
+      if (!token) return
+      try {
+        const res = await fetch(`${API_URL}/auth/quota`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        if (res.ok) {
+          const data = await res.json()
+          const quota = data.quota
+          const percent = Math.min(100, Math.max(0, Math.round(quota.usagePercentage)))
+          setUsagePercent(percent)
+          // 简洁文本: 已用 / 总计
+          if (quota.usedStorageFormatted && quota.maxStorageFormatted) {
+            setQuotaText(`${quota.usedStorageFormatted} / ${quota.maxStorageFormatted}`)
+          }
+        }
+      } catch {}
+    }
+    fetchQuota()
+  }, [token])
 
   if (!user) return null
 
@@ -147,16 +231,44 @@ export function AppSidebar() {
             <SidebarGroupLabel>系统管理</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {adminItems.map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild isActive={pathname === item.url}>
-                      <Link href={item.url}>
-                        <item.icon />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
+                {adminItems.map((item) => {
+                  const hasChildren = !!item.children && item.children.length > 0
+                  const isParentExactActive = pathname === item.url
+                  return (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton asChild isActive={isParentExactActive}>
+                        <Link href={item.url}>
+                          <item.icon />
+                          <span>{item.title}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                      {hasChildren && (
+                        <SidebarMenuAction
+                          onClick={() => setAdminOpen((v) => !v)}
+                          aria-label={adminOpen ? '折叠' : '展开'}
+                          title={adminOpen ? '折叠' : '展开'}
+                          className={adminOpen ? 'rotate-90 transition-transform' : 'transition-transform'}
+                        >
+                          <ChevronRight className="size-4" />
+                        </SidebarMenuAction>
+                      )}
+                      {hasChildren && adminOpen && (
+                        <SidebarMenuSub>
+                          {item.children.map((child) => (
+                            <SidebarMenuSubItem key={child.title}>
+                              <SidebarMenuSubButton asChild isActive={pathname === child.url}>
+                                <Link href={child.url}>
+                                  <child.icon />
+                                  <span>{child.title}</span>
+                                </Link>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          ))}
+                        </SidebarMenuSub>
+                      )}
+                    </SidebarMenuItem>
+                  )
+                })}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
@@ -164,6 +276,7 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter>
+        {/* 账户信息 */}
         <SidebarMenu>
           <SidebarMenuItem>
             <DropdownMenu>
@@ -213,6 +326,25 @@ export function AppSidebar() {
             </DropdownMenu>
           </SidebarMenuItem>
         </SidebarMenu>
+
+        {/* 配额使用率 */}
+        {usagePercent !== null && (
+          <div className="px-2 pb-2">
+            <div className="flex items-center justify-between text-[10px] text-sidebar-foreground/70 mb-1">
+              <div className="flex items-center gap-1">
+                <HardDriveIcon className="h-3 w-3" />
+                <span>配额使用</span>
+              </div>
+              <div className="font-medium">{usagePercent}%</div>
+            </div>
+            <Progress value={usagePercent} className="h-1.5" />
+            {quotaText && (
+              <div className="mt-1 text-[10px] text-sidebar-foreground/60">
+                {quotaText}
+              </div>
+            )}
+          </div>
+        )}
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

@@ -162,6 +162,7 @@ export const fileDirectLinks = sqliteTable("file_direct_links", {
   accessCount: integer("access_count").notNull().default(0),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
+  adminDisabled: integer("admin_disabled", { mode: "boolean" }).notNull().default(false),
 })
 
 // 直链访问日志表
@@ -206,6 +207,7 @@ export const fileShares = sqliteTable("file_shares", {
   expiresAt: integer("expires_at"), // 过期时间，可选
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
+  adminDisabled: integer("admin_disabled", { mode: "boolean" }).notNull().default(false),
 })
 
 // 用户存储配额表
