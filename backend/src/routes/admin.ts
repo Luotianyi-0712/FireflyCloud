@@ -2,7 +2,7 @@ import { Elysia, t } from "elysia"
 import { jwt } from "@elysiajs/jwt"
 import { bearer } from "@elysiajs/bearer"
 import { db } from "../db"
-import { users, files, smtpConfig, emailVerificationCodes, storageConfig, r2MountPoints, folders, userQuotas, roleQuotaConfig, fileDirectLinks, fileShares } from "../db/schema"
+import { users, files, smtpConfig, emailVerificationCodes, storageConfig, r2MountPoints, folders, userQuotas, roleQuotaConfig, fileDirectLinks, fileShares, oneDriveAuth } from "../db/schema"
 import { eq, desc, and, like, or } from "drizzle-orm"
 import { nanoid } from "nanoid"
 import { sendVerificationEmail } from "../services/email"
@@ -11,6 +11,7 @@ import { logger } from "../utils/logger"
 import { hashPassword, verifyPassword, validatePasswordStrength } from "../utils/password"
 import { siteConfig } from "../db/schema"
 import { QuotaService } from "../services/quota"
+import { OneDriveService } from "../services/onedrive"
 
 export const adminRoutes = new Elysia({ prefix: "/admin" })
   .use(
@@ -106,9 +107,9 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
     try {
       const now = Date.now()
       if (adminDisabled) {
-        await db.update(fileDirectLinks).set({ adminDisabled: 1, enabled: 0, updatedAt: now }).where(eq(fileDirectLinks.id, id))
+        await db.update(fileDirectLinks).set({ adminDisabled: true, enabled: false, updatedAt: now }).where(eq(fileDirectLinks.id, id))
       } else {
-        await db.update(fileDirectLinks).set({ adminDisabled: 0, enabled: 1, updatedAt: now }).where(eq(fileDirectLinks.id, id))
+        await db.update(fileDirectLinks).set({ adminDisabled: false, enabled: true, updatedAt: now }).where(eq(fileDirectLinks.id, id))
       }
       return { success: true }
     } catch (error) {
@@ -154,9 +155,9 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
     try {
       const now = Date.now()
       if (adminDisabled) {
-        await db.update(fileShares).set({ adminDisabled: 1, enabled: 0, updatedAt: now }).where(eq(fileShares.id, id))
+        await db.update(fileShares).set({ adminDisabled: true, enabled: false, updatedAt: now }).where(eq(fileShares.id, id))
       } else {
-        await db.update(fileShares).set({ adminDisabled: 0, enabled: 1, updatedAt: now }).where(eq(fileShares.id, id))
+        await db.update(fileShares).set({ adminDisabled: false, enabled: true, updatedAt: now }).where(eq(fileShares.id, id))
       }
       return { success: true }
     } catch (error) {
@@ -179,6 +180,8 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
       const r2StorageInDB = r2FilesInDB.reduce((sum, file) => sum + file.size, 0)
       const localFiles = totalFiles.filter(file => file.storageType === "local")
       const localStorage = localFiles.reduce((sum, file) => sum + file.size, 0)
+      const oneDriveFilesInDB = totalFiles.filter(file => file.storageType === "onedrive")
+      const oneDriveStorageInDB = oneDriveFilesInDB.reduce((sum, file) => sum + file.size, 0)
 
       // 获取存储配置
       const storageCfg = await db.select().from(storageConfig).get()
@@ -208,8 +211,54 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
         }
       }
 
-      // 计算总存储（本地存储 + R2实际存储）
-      const actualTotalStorage = localStorage + r2ActualStorage
+      // 统计 OneDrive 实际使用量（管理员账户驱动器用量，包含所有用户子目录）
+      let oneDriveActualStorage = 0
+      let oneDriveStorageError: string | undefined
+      if (storageCfg && (storageCfg.storageType === "onedrive" || storageCfg.enableMixedMode) && storageCfg.oneDriveClientId) {
+        try {
+          // 获取管理员 OneDrive 认证
+          const adminAuth = await db
+            .select({
+              id: oneDriveAuth.id,
+              accessToken: oneDriveAuth.accessToken,
+              refreshToken: oneDriveAuth.refreshToken,
+              expiresAt: oneDriveAuth.expiresAt,
+            })
+            .from(oneDriveAuth)
+            .innerJoin(users, eq(oneDriveAuth.userId, users.id))
+            .where(eq(users.role, 'admin'))
+            .get()
+
+          if (!adminAuth) {
+            oneDriveStorageError = "OneDrive not configured"
+          } else {
+            const odClientId = storageCfg.oneDriveClientId!
+            const odClientSecret = storageCfg.oneDriveClientSecret!
+            const odTenantId = storageCfg.oneDriveTenantId!
+
+            let accessToken = adminAuth.accessToken
+            // 刷新过期令牌
+            if (adminAuth.expiresAt <= Date.now()) {
+              const odSvcForRefresh = new OneDriveService({ clientId: odClientId, clientSecret: odClientSecret, tenantId: odTenantId })
+              const refreshed = await odSvcForRefresh.refreshToken(adminAuth.refreshToken)
+              accessToken = refreshed.accessToken
+              await db.update(oneDriveAuth).set({ accessToken: refreshed.accessToken, refreshToken: refreshed.refreshToken, expiresAt: refreshed.expiresAt, updatedAt: Date.now() }).where(eq(oneDriveAuth.id, adminAuth.id))
+              logger.info(`管理员OneDrive访问令牌刷新成功(统计)`) 
+            }
+
+            const odSvc = new OneDriveService({ clientId: odClientId, clientSecret: odClientSecret, tenantId: odTenantId })
+            odSvc.setAccessToken(accessToken)
+            const driveInfo = await odSvc.getDriveInfo()
+            oneDriveActualStorage = Number(driveInfo?.quota?.used || 0)
+          }
+        } catch (error) {
+          oneDriveStorageError = error instanceof Error ? error.message : "Unknown error"
+          logger.error("查询OneDrive存储使用量失败:", error as unknown as Error)
+        }
+      }
+
+      // 计算总存储（本地存储 + R2实际存储 + OneDrive 实际存储）
+      const actualTotalStorage = localStorage + r2ActualStorage + oneDriveActualStorage
 
       return {
         totalUsers: totalUsers.length,
@@ -220,6 +269,11 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
         r2Storage: r2ActualStorage,
         r2Files: r2ActualFiles,
         r2StorageError,
+
+        // OneDrive 存储信息
+        oneDriveStorage: oneDriveActualStorage,
+        oneDriveStorageInDB,
+        oneDriveStorageError,
 
         // 本地存储信息
         localStorage,
@@ -253,7 +307,10 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
         regularUsers: 0,
         storageType: "local",
         enableMixedMode: false,
-        r2StorageError: "Failed to fetch stats"
+        r2StorageError: "Failed to fetch stats",
+        oneDriveStorage: 0,
+        oneDriveStorageInDB: 0,
+        oneDriveStorageError: "Failed to fetch stats"
       }
     }
   })

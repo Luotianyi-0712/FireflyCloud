@@ -486,7 +486,7 @@ export function FileManager() {
               </TabsList>
 
               <TabsContent value="files" className="space-y-4">
-                <Card>
+                <Card className="w-full">
                   <CardHeader className="pb-3">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                       <div className="min-w-0 flex-1">
@@ -541,12 +541,14 @@ export function FileManager() {
                       </Button>
                     </div>
                   </CardHeader>
-                  <CardContent className="px-3 md:px-6">
-                    <FileList 
-                      files={files} 
-                      onDeleteSuccess={handleDeleteSuccess}
-                      onFolderNavigate={handleFolderNavigate}
-                    />
+                  <CardContent className="px-3 md:px-6 overflow-x-auto">
+                    <div className="min-w-full">
+                      <FileList 
+                        files={files} 
+                        onDeleteSuccess={handleDeleteSuccess}
+                        onFolderNavigate={handleFolderNavigate}
+                      />
+                    </div>
                   </CardContent>
                 </Card>
               </TabsContent>

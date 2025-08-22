@@ -656,8 +656,8 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
         </DrawerContent>
       </Drawer>
 
-      {/* 直链对话框 */}
-      <Dialog open={directLinkDialog.open} onOpenChange={(open) =>
+      {/* 桌面端直链对话框 */}
+      <Dialog open={!isMobile && directLinkDialog.open} onOpenChange={(open) =>
         setDirectLinkDialog(prev => ({ ...prev, open }))
       }>
         <DialogContent className="sm:max-w-md">
@@ -711,6 +711,60 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 移动端直链底板 */}
+      <Drawer open={isMobile && directLinkDialog.open} onOpenChange={(open) =>
+        setDirectLinkDialog(prev => ({ ...prev, open }))
+      }>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>文件直链</DrawerTitle>
+            <DrawerDescription>
+              {directLinkDialog.fileName} 的永久下载链接
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="px-4 pb-4 space-y-4">
+            {directLinkDialog.loading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">直链地址</label>
+                  <div className="space-y-2">
+                    <Input
+                      value={directLinkDialog.directUrl}
+                      readOnly
+                      className="text-sm"
+                    />
+                    <Button
+                      variant="outline"
+                      onClick={handleCopyDirectLink}
+                      className="w-full flex items-center gap-2"
+                    >
+                      {copied ? (
+                        <CheckCircle className="h-4 w-4" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                      {copied ? "已复制到剪贴板" : "复制链接"}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    此链接使用原始文件名，可以多次使用，无需登录即可下载文件
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+          <DrawerFooter>
+            <DrawerClose asChild>
+              <Button variant="outline">关闭</Button>
+            </DrawerClose>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
 
       {/* 分享对话框 */}
       <Dialog open={shareDialog.open} onOpenChange={(open) =>
