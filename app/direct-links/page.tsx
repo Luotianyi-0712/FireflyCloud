@@ -67,6 +67,7 @@ interface DirectLink {
   directName: string
   token?: string
   enabled: boolean
+  adminDisabled?: boolean
   accessCount: number
   createdAt: number
   updatedAt: number
@@ -232,6 +233,10 @@ export default function DirectLinksPage() {
 
   const handleToggleLink = async (link: DirectLink) => {
     try {
+      if (link.adminDisabled && !link.enabled) {
+        alert("该直链因违规已被管理员禁用，无法启用")
+        return
+      }
       const response = await fetch(`${API_URL}/direct-links/${link.id}/toggle`, {
         method: "PUT",
         headers: {
@@ -244,7 +249,8 @@ export default function DirectLinksPage() {
       if (response.ok) {
         await fetchDirectLinks()
       } else {
-        alert("操作失败")
+        const err = await response.json().catch(() => ({}))
+        alert(err.error || "操作失败")
       }
     } catch (error) {
       console.error("Error toggling link:", error)
@@ -443,6 +449,9 @@ export default function DirectLinksPage() {
                       <Badge variant={link.enabled ? "default" : "secondary"}>
                         {link.enabled ? "启用" : "禁用"}
                       </Badge>
+                      {link.adminDisabled && (
+                        <span className="ml-2 text-xs text-red-600">管理员禁用</span>
+                      )}
                     </TableCell>
                     <TableCell>{link.accessCount}</TableCell>
                     <TableCell>{formatDate(link.createdAt)}</TableCell>
@@ -466,6 +475,8 @@ export default function DirectLinksPage() {
                           variant="ghost"
                           size="sm"
                           onClick={() => handleToggleLink(link)}
+                          disabled={!!link.adminDisabled && !link.enabled}
+                          title={link.adminDisabled && !link.enabled ? "该直链因违规已被管理员禁用，无法启用" : undefined}
                         >
                           {link.enabled ? (
                             <ToggleRight className="h-4 w-4" />

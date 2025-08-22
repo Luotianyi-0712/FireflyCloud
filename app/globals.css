@@ -103,3 +103,17 @@
     @apply overflow-x-hidden;
   }
 }
+
+@media (orientation: portrait) {
+  .card-portrait {
+    max-width: 300px;
+  }
+}
+@media (orientation: landscape) {
+  .card-portrait {
+    max-width: none;
+  }
+}
+.card-portrait {
+  width: 100%;
+}

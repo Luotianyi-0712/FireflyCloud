@@ -62,6 +62,7 @@ interface ShareRecord {
   pickupCode: string | null
   requireLogin: boolean
   enabled: boolean
+  adminDisabled?: boolean
   accessCount: number
   expiresAt: number | null
   createdAt: number
@@ -148,6 +149,11 @@ export default function SharesPage() {
 
   const handleToggleStatus = async (shareId: string, enabled: boolean) => {
     try {
+      const target = shares.find(s => s.id === shareId)
+      if (target?.adminDisabled && enabled) {
+        alert("该分享因违规已被管理员禁用，无法启用")
+        return
+      }
       const response = await fetch(`${API_URL}/files/shares/${shareId}/status`, {
         method: "PUT",
         headers: {
@@ -415,6 +421,9 @@ export default function SharesPage() {
                               ) : (
                                 <Badge variant="secondary">已禁用</Badge>
                               )}
+                              {share.adminDisabled && (
+                                <span className="text-xs text-red-600">管理员禁用</span>
+                              )}
                             </div>
                           </TableCell>
                           <TableCell>
@@ -471,6 +480,7 @@ export default function SharesPage() {
                                 <DropdownMenuItem
                                   onClick={() => handleToggleStatus(share.id, !share.enabled)}
                                   className="flex items-center gap-2"
+                                  disabled={!!share.adminDisabled && !share.enabled}
                                 >
                                   {share.enabled ? (
                                     <>
@@ -572,6 +582,7 @@ export default function SharesPage() {
                               <DropdownMenuItem
                                 onClick={() => handleToggleStatus(share.id, !share.enabled)}
                                 className="flex items-center gap-2"
+                                disabled={!!share.adminDisabled && !share.enabled}
                               >
                                 {share.enabled ? (
                                   <>

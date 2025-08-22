@@ -376,6 +376,63 @@ async function initializeDatabase() {
       logger.dbInfo('onedrive_webdav_pass 字段添加成功')
     }
 
+    // 检查并补齐 file_direct_links 缺失字段（兼容旧库）
+    try {
+      const directLinkColumns = sqlite.prepare("PRAGMA table_info(file_direct_links)").all() as Array<{ name: string }>
+      const hasAdminDisabledDL = directLinkColumns.some(col => col.name === 'admin_disabled')
+      if (!hasAdminDisabledDL) {
+        logger.dbInfo('添加 admin_disabled 字段到 file_direct_links 表...')
+        sqlite.exec('ALTER TABLE file_direct_links ADD COLUMN admin_disabled INTEGER NOT NULL DEFAULT 0')
+        logger.database('ALTER', 'file_direct_links')
+        logger.dbInfo('admin_disabled 字段添加成功 (file_direct_links)')
+      }
+    } catch (e) {
+      // 表不存在会在前面的 CREATE IF NOT EXISTS 创建，这里忽略
+    }
+
+    // 检查并补齐 file_shares 缺失字段（兼容旧库）
+    try {
+      const shareColumns = sqlite.prepare("PRAGMA table_info(file_shares)").all() as Array<{ name: string }>
+      const ensureShareColumn = (col: string, ddl: string) => {
+        if (!shareColumns.some(c => c.name === col)) {
+          logger.dbInfo(`添加 ${col} 字段到 file_shares 表...`)
+          sqlite.exec(`ALTER TABLE file_shares ADD COLUMN ${ddl}`)
+          logger.database('ALTER', 'file_shares')
+          logger.dbInfo(`${col} 字段添加成功 (file_shares)`)
+        }
+      }
+      ensureShareColumn('require_login', 'require_login INTEGER NOT NULL DEFAULT 0')
+      ensureShareColumn('gatekeeper', 'gatekeeper INTEGER NOT NULL DEFAULT 0')
+      ensureShareColumn('custom_file_name', 'custom_file_name TEXT')
+      ensureShareColumn('custom_file_extension', 'custom_file_extension TEXT')
+      ensureShareColumn('custom_file_size', 'custom_file_size INTEGER')
+      ensureShareColumn('expires_at', 'expires_at INTEGER')
+      ensureShareColumn('admin_disabled', 'admin_disabled INTEGER NOT NULL DEFAULT 0')
+    } catch (e) {
+      // 忽略，表会被前面的 CREATE 创建
+    }
+
+    // 检查并补齐 download_tokens 缺失计数字段（兼容旧库）
+    try {
+      const dlColumns = sqlite.prepare("PRAGMA table_info(download_tokens)").all() as Array<{ name: string }>
+      const hasUsageCount = dlColumns.some(col => col.name === 'usage_count')
+      const hasMaxUsage = dlColumns.some(col => col.name === 'max_usage')
+      if (!hasUsageCount) {
+        logger.dbInfo('添加 usage_count 字段到 download_tokens 表...')
+        sqlite.exec('ALTER TABLE download_tokens ADD COLUMN usage_count INTEGER NOT NULL DEFAULT 0')
+        logger.database('ALTER', 'download_tokens')
+        logger.dbInfo('usage_count 字段添加成功 (download_tokens)')
+      }
+      if (!hasMaxUsage) {
+        logger.dbInfo('添加 max_usage 字段到 download_tokens 表...')
+        sqlite.exec('ALTER TABLE download_tokens ADD COLUMN max_usage INTEGER NOT NULL DEFAULT 2')
+        logger.database('ALTER', 'download_tokens')
+        logger.dbInfo('max_usage 字段添加成功 (download_tokens)')
+      }
+    } catch (e) {
+      // 忽略
+    }
+
     // 插入默认数据
     sqlite.exec(`
       INSERT OR IGNORE INTO storage_config (storage_type, updated_at)
