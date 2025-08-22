@@ -61,6 +61,16 @@ import {
 import { getFileIcon } from "@/lib/file-icons"
 import { DatePicker } from "@/components/ui/date-picker"
 import { downloadFile } from "@/lib/utils"
+import { useIsMobile } from "@/components/ui/use-mobile"
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerClose,
+} from "@/components/ui/drawer"
 
 interface FileItem {
   id: string
@@ -85,13 +95,14 @@ interface FileItem {
 
 interface FileListProps {
   files: FileItem[]
-  onDeleteSuccess: () => void
+  onDeleteSuccess: (deletedId: string) => void
 }
 
 export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListProps & {
   onFolderNavigate?: (folderId: string | null, isR2Folder?: boolean, r2Path?: string, mountPointId?: string, isOneDriveFolder?: boolean, oneDrivePath?: string) => void
 }) {
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; fileId: string; fileName: string }>({ open: false, fileId: "", fileName: "" })
   const [directLinkDialog, setDirectLinkDialog] = useState<{
     open: boolean
     fileId: string
@@ -138,6 +149,7 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
   const { token } = useAuth()
+  const isMobile = useIsMobile()
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
 
@@ -360,12 +372,13 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
       })
 
       if (response.ok) {
-        onDeleteSuccess()
+        onDeleteSuccess(fileId)
       }
     } catch (error) {
       console.error("Delete failed:", error)
     } finally {
       setDeletingId(null)
+      setDeleteConfirm({ open: false, fileId: "", fileName: "" })
     }
   }
 
@@ -421,12 +434,12 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
   }
 
   return (
-    <div className="h-[60vh] overflow-y-auto space-y-2 md:space-y-3 pr-2">
+    <div className="h-[60vh] overflow-y-auto overflow-x-hidden space-y-2 md:space-y-3 pr-2">
       {sortedFiles.map((file) => (
         <Card key={file.id}>
           <CardContent className="p-3 md:p-4">
             <div className="flex items-start md:items-center justify-between gap-2">
-              <div className="flex items-start md:items-center gap-2 md:gap-4 flex-1 min-w-0">
+              <div className="flex items-start md:items-center gap-2 md:gap-4 flex-1 min-w-0 overflow-x-hidden">
                 <div 
                   className={file.isR2Folder || file.mimeType === "application/directory" ? "cursor-pointer" : ""}
                   onClick={() => {
@@ -443,19 +456,19 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
                     getFileIcon(file.mimeType, file.originalName)
                   )}
                 </div>
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0 overflow-x-hidden">
                   <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0 max-w-full">
                       {file.isR2Folder || file.mimeType === "application/directory" ? (
                         <h4 
-                          className="font-medium truncate cursor-pointer hover:text-blue-600 hover:underline text-sm md:text-base" 
+                          className="font-medium truncate max-w-[80vw] sm:max-w-full md:max-w-none cursor-pointer hover:text-blue-600 hover:underline text-sm md:text-base" 
                           onClick={() => handleFolderClick(file)}
                         >
                           {file.originalName}
                         </h4>
                       ) : (
                         <h4 
-                          className="font-medium truncate cursor-pointer hover:text-blue-600 hover:underline text-sm md:text-base" 
+                          className="font-medium truncate max-w-[80vw] sm:max-w-full md:max-w-none cursor-pointer hover:text-blue-600 hover:underline text-sm md:text-base" 
                           onClick={() => handleFilePreview(file)}
                         >
                           {file.originalName}
@@ -542,12 +555,12 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
                         分享文件
                       </DropdownMenuItem>
                       <DropdownMenuItem 
-                        onClick={() => handleDelete(file.id)}
+                        onClick={() => setDeleteConfirm({ open: true, fileId: file.id, fileName: file.originalName })}
                         className="text-red-600 focus:text-red-600"
                         disabled={deletingId === file.id}
                       >
                         <Trash2 className="h-4 w-4 mr-2" />
-                        {deletingId === file.id ? "删除中..." : "删除"}
+                        删除
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -592,7 +605,7 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
                       <AlertDialogHeader>
                         <AlertDialogTitle>删除文件</AlertDialogTitle>
                         <AlertDialogDescription>
-                          您确定要删除 "{file.originalName}" 吗？此操作无法撤销。
+                          您确定要删除 "{file.originalName}" 吗？删除后无法找回文件，此操作无法撤销。
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
@@ -613,6 +626,35 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
           </CardContent>
         </Card>
       ))}
+
+      {/* 移动端删除确认底板 */}
+      <Drawer open={isMobile && deleteConfirm.open} onOpenChange={(open) => setDeleteConfirm(prev => ({ ...prev, open }))}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>删除文件</DrawerTitle>
+            <DrawerDescription>
+              确认删除 "{deleteConfirm.fileName}" 吗？删除后无法找回文件。
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="px-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              此操作将永久删除该文件且不可恢复，请谨慎操作。
+            </p>
+          </div>
+          <DrawerFooter>
+            <Button
+              onClick={() => handleDelete(deleteConfirm.fileId)}
+              disabled={deletingId === deleteConfirm.fileId}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deletingId === deleteConfirm.fileId ? "删除中..." : "删除"}
+            </Button>
+            <DrawerClose asChild>
+              <Button variant="outline">取消</Button>
+            </DrawerClose>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
 
       {/* 直链对话框 */}
       <Dialog open={directLinkDialog.open} onOpenChange={(open) =>

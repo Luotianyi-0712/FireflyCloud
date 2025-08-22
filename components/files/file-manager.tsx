@@ -29,6 +29,7 @@ export function FileManager() {
   const [folders, setFolders] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
+  const [quotaRefreshKey, setQuotaRefreshKey] = useState(0)
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null)
   const [r2MountInfo, setR2MountInfo] = useState<any>(null)
   const [oneDriveMountInfo, setOneDriveMountInfo] = useState<any>(null)
@@ -189,10 +190,14 @@ export function FileManager() {
 
   const handleUploadSuccess = () => {
     setRefreshTrigger((prev) => prev + 1)
+    setQuotaRefreshKey(prev => prev + 1)
   }
 
-  const handleDeleteSuccess = () => {
+  const handleDeleteSuccess = (deletedId: string) => {
+    // 乐观更新：先从当前列表移除，再后台刷新以确保一致
+    setFiles(prev => prev.filter(f => f.id !== deletedId))
     setRefreshTrigger((prev) => prev + 1)
+    setQuotaRefreshKey(prev => prev + 1)
   }
 
   const handleFolderSelect = (folderId: string | null) => {
@@ -460,7 +465,7 @@ export function FileManager() {
               />
             </div>
             <div className="hidden md:block">
-              <QuotaDisplay />
+              <QuotaDisplay refreshKey={quotaRefreshKey} />
             </div>
           </div>
 
@@ -578,7 +583,7 @@ export function FileManager() {
       </div>
       
       {/* 移动端配额显示条 */}
-      <MobileQuotaBar />
+      <MobileQuotaBar refreshKey={quotaRefreshKey} />
     </>
   )
 }

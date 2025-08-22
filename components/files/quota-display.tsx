@@ -18,7 +18,11 @@ interface QuotaInfo {
   availableSpaceFormatted: string
 }
 
-export function QuotaDisplay() {
+interface QuotaDisplayProps {
+  refreshKey?: number
+}
+
+export function QuotaDisplay({ refreshKey = 0 }: QuotaDisplayProps) {
   const [quota, setQuota] = useState<QuotaInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -28,7 +32,7 @@ export function QuotaDisplay() {
 
   useEffect(() => {
     fetchQuota()
-  }, [token])
+  }, [token, refreshKey])
 
   const fetchQuota = async () => {
     if (!token) return

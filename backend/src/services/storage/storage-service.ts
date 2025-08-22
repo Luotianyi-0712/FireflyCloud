@@ -282,6 +282,7 @@ export class StorageService {
 			await this.s3Client.send(command)
 			logger.info(`文件从 R2 删除成功: ${storagePath}`)
 		} else if (this.config.storageType === "onedrive" && this.oneDriveService) {
+			await this.useAdminOneDriveAuth()
 			await this.oneDriveService.deleteItem(storagePath)
 			logger.info(`文件从 OneDrive 删除成功: ${storagePath}`)
 		} else {

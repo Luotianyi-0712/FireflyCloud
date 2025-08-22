@@ -35,7 +35,7 @@ interface FileUploadProps {
 interface UploadFile {
   file: File
   progress: number
-  status: "pending" | "uploading" | "success" | "error"
+  status: "pending" | "uploading" | "processing" | "success" | "error"
   error?: string
 }
 
@@ -73,68 +73,164 @@ export function FileUpload({ onUploadSuccess, currentFolderId, r2MountInfo, oneD
     )
 
     try {
-      const formData = new FormData()
-      formData.append("file", fileItem.file)
+      // 若当前使用 OneDrive 策略/路径，尝试直传
+      const tryDirectOneDrive = async (): Promise<boolean> => {
+        try {
+          const createBody: Record<string, any> = { filename: fileItem.file.name }
+          if (currentFolderId) createBody.folderId = currentFolderId
+          if (oneDriveMountInfo?.currentOneDrivePath) createBody.currentOneDrivePath = oneDriveMountInfo.currentOneDrivePath
 
-      // 添加文件夹ID到表单数据
-      if (currentFolderId) {
-        formData.append("folderId", currentFolderId)
+          const sessionResp = await fetch(`${API_URL}/files/onedrive/create-upload-session`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify(createBody)
+          })
+          if (!sessionResp.ok) return false
+          const sessionData = await sessionResp.json()
+          if (!sessionData?.useDirect || !sessionData?.uploadUrl) return false
+
+          const uploadUrl: string = sessionData.uploadUrl
+
+          const chunkSize = 320 * 1024 * 10 // ~3.2MB
+          let uploaded = 0
+          const total = fileItem.file.size
+          let lastDriveItemId: string | null = null
+          while (uploaded < total) {
+            const start = uploaded
+            const end = Math.min(start + chunkSize, total)
+            const blob = fileItem.file.slice(start, end)
+            const arrayBuffer = await blob.arrayBuffer()
+            const res = await fetch(uploadUrl, {
+              method: 'PUT',
+              headers: {
+                'Content-Range': `bytes ${start}-${end - 1}/${total}`,
+                'Content-Length': String(arrayBuffer.byteLength),
+              },
+              body: arrayBuffer,
+            })
+            if (!res.ok && res.status !== 201 && res.status !== 200 && res.status !== 202) {
+              return false
+            }
+            // 如果上传完成（200/201），尝试解析返回的 DriveItem
+            if (res.ok && (res.status === 200 || res.status === 201)) {
+              try {
+                const json = await res.json()
+                if (json && json.id) {
+                  lastDriveItemId = json.id as string
+                }
+              } catch {}
+            }
+            uploaded = end
+            const raw = (uploaded / total) * 100
+            const percent = Math.max(1, Math.min(99, Math.round(raw)))
+            setUploadFiles(prev => prev.map((item, i) => (i === index ? { ...item, progress: percent } : item)))
+          }
+
+          // 最后一次响应通常包含 driveItem；若没有，再 GET session 也可，这里直接解析最后一次结果不可控，改为标记 processing
+          setUploadFiles(prev => prev.map((item, i) => (i === index ? { ...item, status: 'processing', progress: 99 } : item)))
+
+          if (!lastDriveItemId) {
+            // 未拿到 ID，视为失败回退
+            return false
+          }
+
+          // 调用后端登记文件
+          const finalizeResp = await fetch(`${API_URL}/files/onedrive/finalize-upload`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+              filename: fileItem.file.name,
+              size: fileItem.file.size,
+              mimeType: fileItem.file.type || 'application/octet-stream',
+              driveItemId: lastDriveItemId,
+              folderId: currentFolderId || undefined,
+            })
+          })
+          if (!finalizeResp.ok) return false
+          // 成功
+          setUploadFiles(prev => prev.map((item, i) => (i === index ? { ...item, status: 'success', progress: 100 } : item)))
+          onUploadSuccess()
+          return true
+        } catch {
+          return false
+        }
       }
 
-      // 添加当前R2路径到表单数据
-      if (r2MountInfo?.currentR2Path) {
-        formData.append("currentR2Path", r2MountInfo.currentR2Path)
-      }
+      // 若直传失败，回退到服务器中转
+      const directOk = await tryDirectOneDrive()
+      if (!directOk) {
+        const formData = new FormData()
+        formData.append("file", fileItem.file)
 
-      // 添加当前OneDrive路径到表单数据
-      if (oneDriveMountInfo?.currentOneDrivePath) {
-        formData.append("currentOneDrivePath", oneDriveMountInfo.currentOneDrivePath)
-      }
+        // 添加文件夹ID到表单数据
+        if (currentFolderId) {
+          formData.append("folderId", currentFolderId)
+        }
 
-      // 使用 XMLHttpRequest 以便获取上传进度
-      await new Promise<void>((resolve) => {
-        const xhr = new XMLHttpRequest()
-        xhr.open("POST", `${API_URL}/files/upload`, true)
-        xhr.setRequestHeader("Authorization", `Bearer ${token}`)
+        // 添加当前R2路径到表单数据
+        if (r2MountInfo?.currentR2Path) {
+          formData.append("currentR2Path", r2MountInfo.currentR2Path)
+        }
 
-        xhr.upload.onprogress = (event) => {
-          if (event.lengthComputable) {
-            const percent = Math.round((event.loaded / event.total) * 100)
+        // 添加当前OneDrive路径到表单数据
+        if (oneDriveMountInfo?.currentOneDrivePath) {
+          formData.append("currentOneDrivePath", oneDriveMountInfo.currentOneDrivePath)
+        }
+
+        // 使用 XMLHttpRequest 以便获取上传进度
+        await new Promise<void>((resolve) => {
+          const xhr = new XMLHttpRequest()
+          xhr.open("POST", `${API_URL}/files/upload`, true)
+          xhr.setRequestHeader("Authorization", `Bearer ${token}`)
+
+          xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable) {
+              // 仅反映客户端 -> 服务端的上传进度，将上限封顶在 95%，留出服务器处理阶段
+              const raw = (event.loaded / event.total) * 100
+              const percent = Math.max(1, Math.min(95, Math.round(raw)))
+              setUploadFiles((prev) =>
+                prev.map((item, i) => (i === index ? { ...item, progress: percent } : item)),
+              )
+            }
+          }
+
+          // 当请求体发送完成，但服务器仍在处理（例如上传到远程存储）
+          xhr.upload.onload = () => {
             setUploadFiles((prev) =>
-              prev.map((item, i) => (i === index ? { ...item, progress: percent } : item)),
+              prev.map((item, i) => (i === index ? { ...item, status: "processing", progress: Math.max(item.progress, 99) } : item)),
             )
           }
-        }
 
-        xhr.onload = async () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
+          xhr.onload = async () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              setUploadFiles((prev) =>
+                prev.map((item, i) => (i === index ? { ...item, status: "success", progress: 100 } : item)),
+              )
+              onUploadSuccess()
+              resolve()
+            } else {
+              let message = "上传失败"
+              try {
+                const data = JSON.parse(xhr.responseText)
+                message = data.error || message
+              } catch {}
+              setUploadFiles((prev) =>
+                prev.map((item, i) => (i === index ? { ...item, status: "error", error: message } : item)),
+              )
+              resolve()
+            }
+          }
+
+          xhr.onerror = () => {
             setUploadFiles((prev) =>
-              prev.map((item, i) => (i === index ? { ...item, status: "success", progress: 100 } : item)),
-            )
-            onUploadSuccess()
-            resolve()
-          } else {
-            let message = "上传失败"
-            try {
-              const data = JSON.parse(xhr.responseText)
-              message = data.error || message
-            } catch {}
-            setUploadFiles((prev) =>
-              prev.map((item, i) => (i === index ? { ...item, status: "error", error: message } : item)),
+              prev.map((item, i) => (i === index ? { ...item, status: "error", error: "网络错误" } : item)),
             )
             resolve()
           }
-        }
 
-        xhr.onerror = () => {
-          setUploadFiles((prev) =>
-            prev.map((item, i) => (i === index ? { ...item, status: "error", error: "网络错误" } : item)),
-          )
-          resolve()
-        }
-
-        xhr.send(formData)
-      })
+          xhr.send(formData)
+        })
+      }
     } catch (err) {
       setUploadFiles((prev) =>
         prev.map((item, i) => (i === index ? { ...item, status: "error", error: "网络错误" } : item)),
@@ -208,7 +304,7 @@ export function FileUpload({ onUploadSuccess, currentFolderId, r2MountInfo, oneD
                     <div className="flex items-center gap-3 flex-1">
                       <FileIcon className="h-8 w-8 text-muted-foreground" />
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">{fileItem.file.name}</p>
+                        <p className="font-medium truncate max-w-[60vw] sm:max-w-[70vw] md:max-w-none" title={fileItem.file.name}>{fileItem.file.name}</p>
                         <p className="text-sm text-muted-foreground">{formatFileSize(fileItem.file.size)}</p>
                       </div>
                     </div>
@@ -227,9 +323,15 @@ export function FileUpload({ onUploadSuccess, currentFolderId, r2MountInfo, oneD
                     </div>
                   </div>
 
-                  {fileItem.status === "uploading" && (
-                    <div className="mt-2">
-                      <Progress value={fileItem.progress} className="h-2" />
+                  {(fileItem.status === "uploading" || fileItem.status === "processing") && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <Progress value={fileItem.progress} className="h-2 flex-1" />
+                      <span className="text-sm text-muted-foreground w-14 text-right">
+                        {fileItem.progress}%
+                      </span>
+                      {fileItem.status === "processing" && (
+                        <span className="text-xs text-muted-foreground">处理中...</span>
+                      )}
                     </div>
                   )}
                 </CardContent>

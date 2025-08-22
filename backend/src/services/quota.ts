@@ -94,7 +94,17 @@ export class QuotaService {
         }
       }
 
-      const currentUsed = localStorage + r2Storage
+      // 计算 OneDrive 存储使用量（按数据库记录汇总）
+      let oneDriveStorage = 0
+      let oneDriveCount = 0
+      userFiles.forEach(file => {
+        if (file.storageType === 'onedrive') {
+          oneDriveStorage += file.size
+          oneDriveCount++
+        }
+      })
+
+      const currentUsed = localStorage + r2Storage + oneDriveStorage
       const maxStorage = quota.customQuota || quota.maxStorage
       const availableSpace = maxStorage - currentUsed
 
@@ -211,8 +221,10 @@ export class QuotaService {
       // 分别计算本地存储和R2存储的使用量
       let localStorage = 0
       let r2Storage = 0
+      let oneDriveStorage = 0
       let localFiles = 0
       let r2Files = 0
+      let oneDriveFiles = 0
 
       userFiles.forEach(file => {
         if (file.storageType === 'local') {
@@ -221,11 +233,14 @@ export class QuotaService {
         } else if (file.storageType === 'r2') {
           r2Storage += file.size
           r2Files++
+        } else if (file.storageType === 'onedrive') {
+          oneDriveStorage += file.size
+          oneDriveFiles++
         }
       })
 
-      // 总使用量 = 本地存储 + R2存储
-      const actualUsedStorage = localStorage + r2Storage
+      // 总使用量 = 本地存储 + R2存储 + OneDrive存储
+      const actualUsedStorage = localStorage + r2Storage + oneDriveStorage
       const oldUsed = quota.usedStorage
 
       // 更新配额记录
@@ -238,7 +253,7 @@ export class QuotaService {
         .where(eq(userQuotas.userId, userId))
 
       logger.database('UPDATE', 'user_quotas')
-      logger.info(`用户 ${userId} 存储使用量重新计算: ${oldUsed} -> ${actualUsedStorage} (总计: ${userFiles.length} 个文件, 本地: ${localFiles} 个/${localStorage} 字节, R2: ${r2Files} 个/${r2Storage} 字节)`)
+      logger.info(`用户 ${userId} 存储使用量重新计算: ${oldUsed} -> ${actualUsedStorage} (总计: ${userFiles.length} 个文件, 本地: ${localFiles} 个/${localStorage} 字节, R2: ${r2Files} 个/${r2Storage} 字节, OneDrive: ${oneDriveFiles} 个/${oneDriveStorage} 字节)`)
 
       return {
         success: true,
@@ -389,7 +404,17 @@ export class QuotaService {
         }
       }
 
-      const actualUsedStorage = localStorage + r2Storage
+      // 计算 OneDrive 存储使用量（按数据库记录汇总）
+      let oneDriveStorage = 0
+      let oneDriveCount = 0
+      userFiles.forEach(file => {
+        if (file.storageType === 'onedrive') {
+          oneDriveStorage += file.size
+          oneDriveCount++
+        }
+      })
+
+      const actualUsedStorage = localStorage + r2Storage + oneDriveStorage
       const maxStorage = quota.customQuota || quota.maxStorage
       const availableSpace = maxStorage - actualUsedStorage
 
@@ -409,7 +434,7 @@ export class QuotaService {
       }
 
       return {
-        maxStorage,
+        maxStorage: maxStorage,
         usedStorage: actualUsedStorage,
         availableSpace,
         role: quota.role,

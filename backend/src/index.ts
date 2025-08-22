@@ -250,7 +250,7 @@ const app = new Elysia()
       const userAgent = headers['user-agent'] || ''
 
       // 异步查询IP归属地信息
-      IPLocationService.getIPLocation(clientIP).then(async (locationInfo) => {
+      IPLocationService.getIPLocation(clientIP).then(async (locationInfo: any) => {
         try {
           await db.insert(directLinkAccessLogs).values({
             id: nanoid(),
@@ -263,10 +263,10 @@ const app = new Elysia()
             isp: locationInfo?.isp || '',
             accessedAt: Date.now(),
           })
-        } catch (error) {
+        } catch (error: any) {
           logger.error('记录直链访问日志失败:', error)
         }
-      }).catch(error => {
+      }).catch((error: any) => {
         logger.error('查询IP归属地失败:', error)
       })
 
@@ -290,33 +290,102 @@ const app = new Elysia()
       logger.info(`新格式直链访问: ${file.originalName} - 用户: ${linkRecord.userId} - 访问次数: ${linkRecord.accessCount + 1}`)
 
       const storageService = new StorageService(config)
+      // 新增：依据用户“有效存储策略”决定直链分流，避免误判为本地
+      const { UserStorageStrategyService } = require("./services/user-storage-strategy")
+      const { assignment, strategy } = await UserStorageStrategyService.getUserEffectiveStorageStrategy(file.userId)
+      const effectiveStorageType = (strategy?.type || file.storageType || config.storageType || "").toLowerCase()
+      logger.debug(`新格式直链分流: effectiveStorageType=${effectiveStorageType}, file.storageType=${file.storageType}, global=${config.storageType}`)
 
-      if (config.storageType === "r2") {
-        // 对于R2存储，返回预签名URL进行重定向
+      if (effectiveStorageType === "onedrive") {
+        try {
+          const { users, oneDriveAuth } = require("./db/schema")
+          const { eq } = require("drizzle-orm")
+          const { OneDriveService } = require("./services/onedrive")
+
+          // 管理员OneDrive认证
+          const adminAuth = await db
+            .select({
+              id: oneDriveAuth.id,
+              accessToken: oneDriveAuth.accessToken,
+              refreshToken: oneDriveAuth.refreshToken,
+              expiresAt: oneDriveAuth.expiresAt,
+            })
+            .from(oneDriveAuth)
+            .innerJoin(users, eq(oneDriveAuth.userId, users.id))
+            .where(eq(users.role, 'admin'))
+            .get()
+
+          if (!adminAuth) {
+            logger.error(`管理员OneDrive认证信息未找到`)
+            set.status = 401
+            return { error: "OneDrive not configured" }
+          }
+
+          // 刷新过期令牌
+          let accessToken = adminAuth.accessToken
+          if (adminAuth.expiresAt <= Date.now()) {
+            const odClientId = config.oneDriveClientId || config.clientId
+            const odClientSecret = config.oneDriveClientSecret || config.clientSecret
+            const odTenantId = config.oneDriveTenantId || config.tenantId
+            const oneDriveService = new OneDriveService({ clientId: odClientId, clientSecret: odClientSecret, tenantId: odTenantId })
+            const refreshed = await oneDriveService.refreshToken(adminAuth.refreshToken)
+            accessToken = refreshed.accessToken
+            await db.update(oneDriveAuth).set({ accessToken: refreshed.accessToken, refreshToken: refreshed.refreshToken, expiresAt: refreshed.expiresAt, updatedAt: Date.now() }).where(eq(oneDriveAuth.id, adminAuth.id))
+            logger.info(`管理员OneDrive访问令牌刷新成功`)
+          }
+
+          // 使用 OneDrive API 生成下载直链
+          const odClientId = config.oneDriveClientId || config.clientId
+          const odClientSecret = config.oneDriveClientSecret || config.clientSecret
+          const odTenantId = config.oneDriveTenantId || config.tenantId
+          const odSvc = new OneDriveService({ clientId: odClientId, clientSecret: odClientSecret, tenantId: odTenantId })
+          odSvc.setAccessToken(accessToken)
+
+          try {
+            // 优先按 itemId
+            const directUrl = await odSvc.getDownloadUrl(file.storagePath)
+            set.status = 302
+            set.headers["Location"] = directUrl
+            return
+          } catch {
+            // 回退：按路径（基于用户策略分配的用户目录）
+            const userPath = assignment ? `${assignment.userFolder}/${file.filename}` : `users/${file.userId}/${file.filename}`
+            const directUrl = await odSvc.getDownloadUrlByPath(userPath)
+            set.status = 302
+            set.headers["Location"] = directUrl
+            return
+          }
+        } catch (error) {
+          logger.error("新格式直链 OneDrive 直链生成失败:", error)
+          set.status = 500
+          return { error: "OneDrive download failed" }
+        }
+      } else if (effectiveStorageType === "r2") {
+        // R2 存储：返回预签名URL进行重定向
         const downloadUrl = await storageService.getDownloadUrl(file.storagePath)
         set.status = 302
         set.headers["Location"] = downloadUrl
         return
-      } else {
-        // 对于本地存储，直接返回文件流
-        const fs = await import("fs")
-
-        if (!fs.existsSync(file.storagePath)) {
-          logger.error(`本地文件不存在: ${file.storagePath}`)
-          set.status = 404
-          return { error: "File not found on storage" }
-        }
-
-        const fileBuffer = fs.readFileSync(file.storagePath)
-
-        // 设置响应头
-        set.headers["Content-Type"] = file.mimeType || "application/octet-stream"
-        set.headers["Content-Disposition"] = `attachment; filename="${encodeURIComponent(file.originalName)}"`
-        set.headers["Content-Length"] = file.size.toString()
-
-        // 直接返回Buffer
-        return fileBuffer
       }
+
+      // 其他（本地）存储：直接返回文件流
+      const fs = await import("fs")
+
+      if (!fs.existsSync(file.storagePath)) {
+        logger.error(`本地文件不存在: ${file.storagePath}`)
+        set.status = 404
+        return { error: "File not found on storage" }
+      }
+
+      const fileBuffer = fs.readFileSync(file.storagePath)
+
+      // 设置响应头
+      set.headers["Content-Type"] = file.mimeType || "application/octet-stream"
+      set.headers["Content-Disposition"] = `attachment; filename="${encodeURIComponent(file.originalName)}"`
+      set.headers["Content-Length"] = file.size.toString()
+
+      // 直接返回Buffer
+      return fileBuffer
     } catch (error) {
       logger.error("新格式直链访问失败:", error)
       set.status = 500

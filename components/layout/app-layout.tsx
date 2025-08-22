@@ -102,7 +102,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             </Breadcrumb>
           </div>
         </header>
-        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
+        <div className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-x-hidden max-w-full">
           {children}
         </div>
       </SidebarInset>

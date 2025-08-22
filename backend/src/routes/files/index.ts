@@ -10,6 +10,7 @@ import { directLinkRoutes } from "./direct-link"
 import { shareCreateRoutes } from "./share"
 import { sharesMgmtRoutes } from "./shares"
 import { deleteFileRoutes } from "./delete-file"
+import { onedriveDirectUploadRoutes } from "./onedrive-direct-upload"
 
 export const fileRoutes = new Elysia({ prefix: "/files" })
 	.use(
@@ -40,4 +41,5 @@ export const fileRoutes = new Elysia({ prefix: "/files" })
 	.use(directLinkRoutes)
 	.use(shareCreateRoutes)
 	.use(sharesMgmtRoutes)
-	.use(deleteFileRoutes) 
+	.use(deleteFileRoutes)
+	.use(onedriveDirectUploadRoutes) 

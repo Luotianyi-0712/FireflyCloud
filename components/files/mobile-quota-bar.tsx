@@ -15,7 +15,11 @@ interface QuotaInfo {
   availableSpaceFormatted: string
 }
 
-export function MobileQuotaBar() {
+interface MobileQuotaBarProps {
+  refreshKey?: number
+}
+
+export function MobileQuotaBar({ refreshKey = 0 }: MobileQuotaBarProps) {
   const [quota, setQuota] = useState<QuotaInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const { token } = useAuth()
@@ -24,7 +28,7 @@ export function MobileQuotaBar() {
 
   useEffect(() => {
     fetchQuota()
-  }, [token])
+  }, [token, refreshKey])
 
   const fetchQuota = async () => {
     if (!token) return

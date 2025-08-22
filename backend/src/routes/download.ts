@@ -267,11 +267,51 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
           return { error: "OneDrive authentication failed" }
         }
       } else {
-        // 对于本地存储，直接返回文件流
+        // 对于本地存储，直接返回文件流（若本地不存在，尝试 OneDrive 回退）
         const fs = await import("fs")
         const path = await import("path")
         
         if (!fs.existsSync(file.storagePath)) {
+          try {
+            const od = resolveOneDriveConfig(config)
+            const { OneDriveService } = require("../services/onedrive")
+            const oneDriveService = new OneDriveService({ clientId: od.clientId, clientSecret: od.clientSecret, tenantId: od.tenantId })
+            const { users, oneDriveAuth } = require("../db/schema")
+            const { eq } = require("drizzle-orm")
+            // 管理员令牌
+            const adminAuth = await db
+              .select({ id: oneDriveAuth.id, accessToken: oneDriveAuth.accessToken, refreshToken: oneDriveAuth.refreshToken, expiresAt: oneDriveAuth.expiresAt })
+              .from(oneDriveAuth)
+              .innerJoin(users, eq(oneDriveAuth.userId, users.id))
+              .where(eq(users.role, 'admin'))
+              .get()
+            if (adminAuth) {
+              let accessToken = adminAuth.accessToken
+              if (adminAuth.expiresAt <= Date.now()) {
+                const refreshed = await oneDriveService.refreshToken(adminAuth.refreshToken)
+                accessToken = refreshed.accessToken
+                await db.update(oneDriveAuth).set({ accessToken: refreshed.accessToken, refreshToken: refreshed.refreshToken, expiresAt: refreshed.expiresAt, updatedAt: Date.now() }).where(eq(oneDriveAuth.id, adminAuth.id))
+              }
+              oneDriveService.setAccessToken(accessToken)
+              // 先按 itemId
+              try {
+                const directUrl = await oneDriveService.getDownloadUrl(file.storagePath)
+                set.status = 302
+                set.headers["Location"] = directUrl
+                return
+              } catch {}
+              // 再按路径
+              const { UserStorageStrategyService } = require("../services/user-storage-strategy")
+              const { assignment } = await UserStorageStrategyService.getUserEffectiveStorageStrategy(file.userId)
+              const fallbackPath = assignment ? `${assignment.userFolder}/${file.filename}` : `users/${file.userId}/${file.filename}`
+              const directUrl = await oneDriveService.getDownloadUrlByPath(fallbackPath)
+              set.status = 302
+              set.headers["Location"] = directUrl
+              return
+            }
+          } catch (e) {
+            logger.warn(`本地文件不存在且 OneDrive 回退失败: ${file.storagePath}`, e)
+          }
           logger.error(`本地文件不存在: ${file.storagePath}`)
           set.status = 404
           return { error: "File not found on storage" }
@@ -281,7 +321,7 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
         
         // 设置响应头，避免创建新的Response对象
         set.headers["Content-Type"] = file.mimeType || "application/octet-stream"
-        set.headers["Content-Disposition"] = `attachment; filename="${encodeURIComponent(file.originalName)}"`
+        set.headers["Content-Disposition"] = `attachment; filename=\"${encodeURIComponent(file.originalName)}\"`
         set.headers["Content-Length"] = file.size.toString()
         
         // 直接返回Buffer，让Elysia处理响应
@@ -464,17 +504,16 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
         }
       }
 
-      // 非OneDrive挂载点文件，使用原有逻辑
+      // 非OneDrive挂载点文件，根据文件记录优先选择策略
       const storageService = new StorageService(config)
 
-      if (config.storageType === "r2" || file.storageType === "r2") {
-        // 对于R2存储，返回预签名URL进行重定向
-        const downloadUrl = await storageService.getDownloadUrl(file.storagePath)
-        set.status = 302
-        set.headers["Location"] = downloadUrl
-        return
-      } else if (config.storageType === "onedrive" || file.storageType === "onedrive") {
-        // 直链：OneDrive存储 - 始终使用管理员认证（并在过期时自动刷新），返回直链重定向
+      // 新增：依据用户“有效存储策略”决定直链分流，避免误判为本地
+      const { UserStorageStrategyService } = require("../services/user-storage-strategy")
+      const { assignment, strategy } = await UserStorageStrategyService.getUserEffectiveStorageStrategy(file.userId)
+      const effectiveStorageType = (strategy?.type || file.storageType || config.storageType || "").toLowerCase()
+
+      if (effectiveStorageType === "onedrive") {
+        // OneDrive 存储：始终使用管理员令牌返回 Graph 直链
         try {
           const { users } = require("../db/schema")
           const { OneDriveService } = require("../services/onedrive")
@@ -492,85 +531,106 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
             .get()
 
           if (!adminAuth) {
-            logger.error(`管理员OneDrive认证信息未找到`)
             set.status = 401
             return { error: "OneDrive not configured" }
           }
 
           let accessToken = adminAuth.accessToken
           if (adminAuth.expiresAt <= Date.now()) {
-            try {
-              const od = resolveOneDriveConfig(config)
-              const oneDriveService = new OneDriveService({
-                clientId: od.clientId,
-                clientSecret: od.clientSecret,
-                tenantId: od.tenantId,
-              })
-              const refreshed = await oneDriveService.refreshToken(adminAuth.refreshToken)
-              accessToken = refreshed.accessToken
-              await db.update(oneDriveAuth).set({
-                accessToken: refreshed.accessToken,
-                refreshToken: refreshed.refreshToken,
-                expiresAt: refreshed.expiresAt,
-                updatedAt: Date.now(),
-              }).where(eq(oneDriveAuth.id, adminAuth.id))
-              logger.info(`管理员OneDrive访问令牌刷新成功`)
-            } catch (e) {
-              logger.error(`管理员OneDrive访问令牌刷新失败`, e)
-              set.status = 401
-              return { error: "OneDrive access token expired, please re-authenticate in admin panel" }
-            }
+            const od = resolveOneDriveConfig(config)
+            const oneDriveService = new OneDriveService({ clientId: od.clientId, clientSecret: od.clientSecret, tenantId: od.tenantId })
+            const refreshed = await oneDriveService.refreshToken(adminAuth.refreshToken)
+            accessToken = refreshed.accessToken
+            await db.update(oneDriveAuth).set({ accessToken: refreshed.accessToken, refreshToken: refreshed.refreshToken, expiresAt: refreshed.expiresAt, updatedAt: Date.now() }).where(eq(oneDriveAuth.id, adminAuth.id))
           }
 
-          const storageService = new StorageService(config)
-          storageService.setOneDriveAccessToken(accessToken)
-
-          // 优先按 itemId，失败则按路径回退，最终设置重定向
+          const od = resolveOneDriveConfig(config)
+          const { OneDriveService: OD } = require("../services/onedrive")
+          const svc = new OD({ clientId: od.clientId, clientSecret: od.clientSecret, tenantId: od.tenantId })
+          svc.setAccessToken(accessToken)
           try {
-            const directUrl = await storageService.getDownloadUrl(file.storagePath)
+            const directUrl = await svc.getDownloadUrl(file.storagePath)
             set.status = 302
             set.headers["Location"] = directUrl
             return
-          } catch (e) {
-            logger.warn(`直链：按 itemId 获取下载URL失败，尝试按路径回退: ${file.storagePath}`)
+          } catch {
             const { UserStorageStrategyService } = require("../services/user-storage-strategy")
             const { assignment } = await UserStorageStrategyService.getUserEffectiveStorageStrategy(file.userId)
             const path = assignment ? `${assignment.userFolder}/${file.filename}` : `users/${file.userId}/${file.filename}`
-            const od = resolveOneDriveConfig(config)
-            const { OneDriveService } = require("../services/onedrive")
-            const oneDriveService = new OneDriveService({ clientId: od.clientId, clientSecret: od.clientSecret, tenantId: od.tenantId })
-            oneDriveService.setAccessToken(accessToken)
-            const directUrl = await oneDriveService.getDownloadUrlByPath(path)
+            const directUrl = await svc.getDownloadUrlByPath(path)
             set.status = 302
             set.headers["Location"] = directUrl
             return
           }
         } catch (error) {
-          logger.error("OneDrive直链认证失败:", error)
+          logger.error("OneDrive直链生成失败:", error)
           set.status = 500
-          return { error: "OneDrive authentication failed" }
+          return { error: "OneDrive download failed" }
         }
-      } else {
-        // 对于本地存储，直接返回文件流
-        const fs = await import("fs")
-        const path = await import("path")
-
-        if (!fs.existsSync(file.storagePath)) {
-          logger.error(`本地文件不存在: ${file.storagePath}`)
-          set.status = 404
-          return { error: "File not found on storage" }
-        }
-
-        const fileBuffer = fs.readFileSync(file.storagePath)
-
-        // 设置响应头，避免创建新的Response对象
-        set.headers["Content-Type"] = file.mimeType || "application/octet-stream"
-        set.headers["Content-Disposition"] = `attachment; filename="${encodeURIComponent(file.originalName)}"`
-        set.headers["Content-Length"] = file.size.toString()
-
-        // 直接返回Buffer，让Elysia处理响应
-        return fileBuffer
+      } else if (effectiveStorageType === "r2") {
+        // R2 存储：返回预签名URL进行重定向
+        const downloadUrl = await storageService.getDownloadUrl(file.storagePath)
+        set.status = 302
+        set.headers["Location"] = downloadUrl
+        return
       }
+
+      // 其他（本地）存储：直接返回文件，若不存在可做 OneDrive 回退尝试
+      const fs = await import("fs")
+      const path = await import("path")
+
+      if (!fs.existsSync(file.storagePath)) {
+        try {
+          const od = resolveOneDriveConfig(config)
+          const { OneDriveService } = require("../services/onedrive")
+          const oneDriveService = new OneDriveService({ clientId: od.clientId, clientSecret: od.clientSecret, tenantId: od.tenantId })
+          const { users, oneDriveAuth } = require("../db/schema")
+          const { eq } = require("drizzle-orm")
+          const adminAuth = await db
+            .select({ id: oneDriveAuth.id, accessToken: oneDriveAuth.accessToken, refreshToken: oneDriveAuth.refreshToken, expiresAt: oneDriveAuth.expiresAt })
+            .from(oneDriveAuth)
+            .innerJoin(users, eq(oneDriveAuth.userId, users.id))
+            .where(eq(users.role, 'admin'))
+            .get()
+          if (adminAuth) {
+            let accessToken = adminAuth.accessToken
+            if (adminAuth.expiresAt <= Date.now()) {
+              const refreshed = await oneDriveService.refreshToken(adminAuth.refreshToken)
+              accessToken = refreshed.accessToken
+              await db.update(oneDriveAuth).set({ accessToken: refreshed.accessToken, refreshToken: refreshed.refreshToken, expiresAt: refreshed.expiresAt, updatedAt: Date.now() }).where(eq(oneDriveAuth.id, adminAuth.id))
+            }
+            oneDriveService.setAccessToken(accessToken)
+            try {
+              const directUrl = await oneDriveService.getDownloadUrl(file.storagePath)
+              set.status = 302
+              set.headers["Location"] = directUrl
+              return
+            } catch {}
+            const { UserStorageStrategyService } = require("../services/user-storage-strategy")
+            const { assignment } = await UserStorageStrategyService.getUserEffectiveStorageStrategy(file.userId)
+            const fallbackPath = assignment ? `${assignment.userFolder}/${file.filename}` : `users/${file.userId}/${file.filename}`
+            const directUrl = await oneDriveService.getDownloadUrlByPath(fallbackPath)
+            set.status = 302
+            set.headers["Location"] = directUrl
+            return
+          }
+        } catch (e) {
+          logger.warn(`本地文件不存在且 OneDrive 回退失败: ${file.storagePath}`, e)
+        }
+        logger.error(`本地文件不存在: ${file.storagePath}`)
+        set.status = 404
+        return { error: "File not found on storage" }
+      }
+
+      const fileBuffer = fs.readFileSync(file.storagePath)
+
+      // 设置响应头，避免创建新的Response对象
+      set.headers["Content-Type"] = file.mimeType || "application/octet-stream"
+      set.headers["Content-Disposition"] = `attachment; filename="${encodeURIComponent(file.originalName)}"`
+      set.headers["Content-Length"] = file.size.toString()
+
+      // 直接返回Buffer，让Elysia处理响应
+      return fileBuffer
     } catch (error) {
       logger.error("文件直链访问失败:", error)
       set.status = 500
