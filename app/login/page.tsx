@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useAuth } from "@/components/auth/auth-provider"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -14,7 +14,7 @@ import { Separator } from "@/components/ui/separator"
 import { Eye, EyeOff, Cloud } from "lucide-react"
 import Link from "next/link"
 
-export default function LoginPage() {
+function LoginContent() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
@@ -136,7 +136,7 @@ export default function LoginPage() {
             <Cloud className="h-6 w-6 text-primary-foreground" />
           </div>
           <h1 className="text-2xl font-bold">FireflyCloud</h1>
-          <p className="text-muted-foreground text-sm">现代化云存储解决方案</p>
+          <p className="text-muted-foreground text-sm"></p>
         </div>
 
         <Card className="w-full">
@@ -254,5 +254,13 @@ export default function LoginPage() {
       </Card>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginContent />
+    </Suspense>
   )
 }

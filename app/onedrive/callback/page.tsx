@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/components/auth/auth-provider"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -8,7 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { CheckCircle, AlertCircle, Loader2 } from "lucide-react"
 
-export default function OneDriveCallbackPage() {
+function OneDriveCallbackContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { token } = useAuth()
@@ -124,5 +124,13 @@ export default function OneDriveCallbackPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function OneDriveCallbackPage() {
+  return (
+    <Suspense fallback={null}>
+      <OneDriveCallbackContent />
+    </Suspense>
   )
 }
