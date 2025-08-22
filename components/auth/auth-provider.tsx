@@ -18,6 +18,9 @@ interface AuthContextType {
   register: (email: string, password: string) => Promise<void>
   logout: () => void
   loading: boolean
+  // 暴露谷歌相关方法
+  loginWithGoogle: (code: string) => Promise<void>
+  getGoogleAuthUrl: () => Promise<string>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -119,7 +122,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const getGoogleAuthUrl = async (): Promise<string> => {
-    const response = await fetch(`${API_URL}/auth/google-oauth-url`)
+    // 与 OneDrive 一致：由前端构造当前页面 origin 的 redirectUri 并传递给后端
+    const redirectUri = typeof window !== 'undefined'
+      ? `${window.location.origin}/auth/google/callback`
+      : ''
+
+    const url = `${API_URL}/auth/google-oauth-url${redirectUri ? `?redirectUri=${encodeURIComponent(redirectUri)}` : ''}`
+    const response = await fetch(url)
     
     if (!response.ok) {
       const error = await response.json()
@@ -131,12 +140,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const loginWithGoogle = async (code: string) => {
+    const redirectUri = typeof window !== 'undefined'
+      ? `${window.location.origin}/auth/google/callback`
+      : ''
+
     const response = await fetch(`${API_URL}/auth/google-oauth-callback`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ code, redirectUri }),
     })
 
     if (!response.ok) {

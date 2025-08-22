@@ -65,11 +65,34 @@ export function GoogleOAuthConfiguration() {
 
       if (response.ok) {
         const data = await response.json()
-        setConfig(data.config || {
+        const loaded: GoogleOAuthConfig = data.config || {
           enabled: false,
           clientId: "",
           clientSecret: "",
           redirectUri: defaultRedirectUri
+        }
+
+        // 如果是本地环境且端口不一致，使用当前站点的回调地址
+        let nextRedirect = loaded.redirectUri || defaultRedirectUri
+        try {
+          if (loaded.redirectUri && defaultRedirectUri) {
+            const isLoadedLocal = loaded.redirectUri.startsWith('http://localhost') || loaded.redirectUri.startsWith('https://localhost')
+            const isDefaultLocal = defaultRedirectUri.startsWith('http://localhost') || defaultRedirectUri.startsWith('https://localhost')
+            if (isLoadedLocal && isDefaultLocal) {
+              const loadedOrigin = new URL(loaded.redirectUri).origin
+              const currentOrigin = new URL(defaultRedirectUri).origin
+              if (loadedOrigin !== currentOrigin) {
+                nextRedirect = defaultRedirectUri
+              }
+            }
+          }
+        } catch {}
+
+        setConfig({
+          enabled: loaded.enabled,
+          clientId: loaded.clientId,
+          clientSecret: loaded.clientSecret,
+          redirectUri: nextRedirect,
         })
       } else {
         setError("获取配置失败")
@@ -278,7 +301,7 @@ export function GoogleOAuthConfiguration() {
             </Button>
           </div>
           <div className="text-xs text-muted-foreground">
-            请将此URI添加到谷歌OAuth应用的授权重定向URI列表中
+            建议使用当前站点：{defaultRedirectUri}
           </div>
         </div>
 

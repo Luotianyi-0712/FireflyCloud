@@ -66,10 +66,13 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
         return { error: "谷歌OAuth未配置或未启用" }
       }
 
+      // 允许前端传入动态 redirectUri（与 OneDrive 逻辑一致）
+      const dynamicRedirect = (query as any)?.redirectUri as string | undefined
+
       const googleOAuth = new GoogleOAuthService({
         clientId: config.clientId,
         clientSecret: config.clientSecret,
-        redirectUri: config.redirectUri
+        redirectUri: dynamicRedirect || config.redirectUri
       })
 
       const authUrl = googleOAuth.getAuthUrl()
@@ -82,7 +85,7 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
   })
   .post("/google-oauth-callback", async ({ body, jwt, set }) => {
     try {
-      const { code } = body
+      const { code, redirectUri } = body as { code?: string; redirectUri?: string }
 
       if (!code) {
         set.status = 400
@@ -100,7 +103,7 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
       const googleOAuth = new GoogleOAuthService({
         clientId: config.clientId,
         clientSecret: config.clientSecret,
-        redirectUri: config.redirectUri
+        redirectUri: redirectUri || config.redirectUri
       })
 
       // 获取访问令牌
@@ -402,7 +405,7 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
         return { error: "认证令牌无效" }
       }
 
-      const user = await db.select().from(users).where(eq(users.id, payload.userId)).get()
+      const user = await db.select().from(users).where(eq(users.id, String(payload.userId))).get()
       if (!user) {
         set.status = 404
         return { error: "用户不存在" }
@@ -435,13 +438,13 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
       }
 
       // 获取用户配额信息
-      const quota = await QuotaService.getUserQuota(payload.userId)
+      const quota = await QuotaService.getUserQuota(String(payload.userId))
       if (!quota) {
         // 如果没有配额记录，尝试创建一个
-        const user = await db.select().from(users).where(eq(users.id, payload.userId)).get()
+        const user = await db.select().from(users).where(eq(users.id, String(payload.userId))).get()
         if (user) {
-          await QuotaService.createUserQuota(payload.userId, user.role)
-          const newQuota = await QuotaService.getUserQuota(payload.userId)
+          await QuotaService.createUserQuota(String(payload.userId), user.role)
+          const newQuota = await QuotaService.getUserQuota(String(payload.userId))
           if (newQuota) {
             return {
               quota: {
@@ -491,13 +494,13 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
         return { error: "认证令牌无效" }
       }
 
-      logger.info(`调试配额信息: 用户 ${payload.userId}`)
+      logger.info(`调试配额信息: 用户 ${String(payload.userId)}`)
 
       // 获取用户所有文件
       const userFiles = await db
         .select()
         .from(files)
-        .where(eq(files.userId, payload.userId))
+        .where(eq(files.userId, String(payload.userId)))
         .all()
 
       // 计算本地存储使用量（数据库中storageType='local'的文件）
@@ -548,11 +551,11 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
       const quota = await db
         .select()
         .from(userQuotas)
-        .where(eq(userQuotas.userId, payload.userId))
+        .where(eq(userQuotas.userId, String(payload.userId)))
         .get()
 
       return {
-        userId: payload.userId,
+        userId: String(payload.userId),
         fileCount: userFiles.length,
         files: fileDetails,
         calculatedUsage: {
