@@ -91,27 +91,50 @@ export function FileUpload({ onUploadSuccess, currentFolderId, r2MountInfo, oneD
         formData.append("currentOneDrivePath", oneDriveMountInfo.currentOneDrivePath)
       }
 
-      const response = await fetch(`${API_URL}/files/upload`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      })
+      // 使用 XMLHttpRequest 以便获取上传进度
+      await new Promise<void>((resolve) => {
+        const xhr = new XMLHttpRequest()
+        xhr.open("POST", `${API_URL}/files/upload`, true)
+        xhr.setRequestHeader("Authorization", `Bearer ${token}`)
 
-      if (response.ok) {
-        setUploadFiles((prev) =>
-          prev.map((item, i) => (i === index ? { ...item, status: "success", progress: 100 } : item)),
-        )
-        onUploadSuccess()
-      } else {
-        const errorData = await response.json()
-        setUploadFiles((prev) =>
-          prev.map((item, i) =>
-            i === index ? { ...item, status: "error", error: errorData.error || "上传失败" } : item,
-          ),
-        )
-      }
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            const percent = Math.round((event.loaded / event.total) * 100)
+            setUploadFiles((prev) =>
+              prev.map((item, i) => (i === index ? { ...item, progress: percent } : item)),
+            )
+          }
+        }
+
+        xhr.onload = async () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            setUploadFiles((prev) =>
+              prev.map((item, i) => (i === index ? { ...item, status: "success", progress: 100 } : item)),
+            )
+            onUploadSuccess()
+            resolve()
+          } else {
+            let message = "上传失败"
+            try {
+              const data = JSON.parse(xhr.responseText)
+              message = data.error || message
+            } catch {}
+            setUploadFiles((prev) =>
+              prev.map((item, i) => (i === index ? { ...item, status: "error", error: message } : item)),
+            )
+            resolve()
+          }
+        }
+
+        xhr.onerror = () => {
+          setUploadFiles((prev) =>
+            prev.map((item, i) => (i === index ? { ...item, status: "error", error: "网络错误" } : item)),
+          )
+          resolve()
+        }
+
+        xhr.send(formData)
+      })
     } catch (err) {
       setUploadFiles((prev) =>
         prev.map((item, i) => (i === index ? { ...item, status: "error", error: "网络错误" } : item)),

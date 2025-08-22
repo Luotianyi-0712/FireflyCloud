@@ -15,20 +15,35 @@ export async function downloadFile(url: string, filename?: string, token?: strin
   try {
     const headers: Record<string, string> = {}
 
-    // 如果是跨域 URL（如 OneDrive/Graph），直接创建 a 标签跳转，避免因 CORS 导致的 0KB blob
+    // 若是后端生成的一次性下载令牌URL（同域），直接用隐藏 iframe，避免 302 跳转的跨域 CORS 问题
+    if (url.includes('/files/download/')) {
+      const iframe = document.createElement('iframe')
+      iframe.style.display = 'none'
+      iframe.src = url
+      document.body.appendChild(iframe)
+      setTimeout(() => {
+        try {
+          document.body.removeChild(iframe)
+        } catch {}
+      }, 60000)
+      return true
+    }
+
+    // 如果是跨域 URL（如 OneDrive/Graph），使用隐藏 iframe 触发下载，避免空白新标签页
     try {
       const parsed = new URL(url, window.location.href)
       const isCrossOrigin = parsed.origin !== window.location.origin
       if (isCrossOrigin) {
-        const link = document.createElement('a')
-        link.href = url
-        // 一些浏览器对跨域下载忽略 download 属性，但设置也无妨
-        if (filename) link.download = filename
-        link.rel = 'noopener'
-        link.target = '_blank'
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
+        const iframe = document.createElement('iframe')
+        iframe.style.display = 'none'
+        iframe.src = url
+        document.body.appendChild(iframe)
+        // 60 秒后清理 iframe（大多数下载会在此之前触发）
+        setTimeout(() => {
+          try {
+            document.body.removeChild(iframe)
+          } catch {}
+        }, 60000)
         return true
       }
     } catch {

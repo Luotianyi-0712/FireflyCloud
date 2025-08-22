@@ -114,7 +114,7 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
         .get()
 
       if (oneDriveMount) {
-        // 文件存储在OneDrive挂载点中，使用管理员 OneDrive 账号下载
+        // 文件存储在OneDrive挂载点中，使用管理员 OneDrive 账号下载（直链重定向）
         logger.debug(`文件存储在OneDrive挂载点中: ${oneDriveMount.mountName}`)
         try {
           const { users } = require("../db/schema")
@@ -168,16 +168,11 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
           const storageService = new StorageService(config)
           storageService.setOneDriveAccessToken(accessToken)
 
-          // 使用OneDrive API下载文件
-          const fileBuffer = await storageService.downloadFile(file.storagePath)
-
-          // 设置响应头
-          set.headers["Content-Type"] = file.mimeType || "application/octet-stream"
-          set.headers["Content-Disposition"] = `attachment; filename="${encodeURIComponent(file.originalName)}"`
-          set.headers["Content-Length"] = fileBuffer.length.toString()
-
-          logger.info(`OneDrive文件下载成功: ${file.originalName}`)
-          return fileBuffer
+          // 获取直链并重定向
+          const downloadUrl = await storageService.getDownloadUrl(file.storagePath)
+          set.status = 302
+          set.headers["Location"] = downloadUrl
+          return
         } catch (error) {
           logger.error("OneDrive文件下载失败:", error)
           set.status = 500
@@ -191,10 +186,11 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
       if (config.storageType === "r2" || file.storageType === "r2") {
         // 对于R2存储，返回预签名URL进行重定向
         const downloadUrl = await storageService.getDownloadUrl(file.storagePath)
-        set.redirect = downloadUrl
+        set.status = 302
+        set.headers["Location"] = downloadUrl
         return
       } else if (config.storageType === "onedrive" || file.storageType === "onedrive") {
-        // OneDrive存储 - 始终使用管理员认证（并在过期时自动刷新）
+        // OneDrive存储 - 始终使用管理员认证（并在过期时自动刷新），返回直链重定向
         try {
           const { users } = require("../db/schema")
           const { OneDriveService } = require("../services/onedrive")
@@ -245,16 +241,14 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
           const storageService = new StorageService(config)
           storageService.setOneDriveAccessToken(accessToken)
 
-          // 改为后端直传：优先按 itemId 下载，失败则按路径回退
+          // 优先按 itemId，失败则按路径回退，最终设置重定向
           try {
-            const fileBuffer = await storageService.downloadFile(file.storagePath)
-            set.headers["Content-Type"] = file.mimeType || "application/octet-stream"
-            set.headers["Content-Disposition"] = `attachment; filename=\"${encodeURIComponent(file.originalName)}\"`
-            set.headers["Content-Length"] = fileBuffer.length.toString()
-            logger.info(`OneDrive文件下载成功: ${file.originalName}`)
-            return fileBuffer
+            const directUrl = await storageService.getDownloadUrl(file.storagePath)
+            set.status = 302
+            set.headers["Location"] = directUrl
+            return
           } catch (e) {
-            logger.warn(`按 itemId 下载失败，尝试按路径回退: ${file.storagePath}`)
+            logger.warn(`按 itemId 获取下载URL失败，尝试按路径回退: ${file.storagePath}`)
             const { UserStorageStrategyService } = require("../services/user-storage-strategy")
             const { assignment } = await UserStorageStrategyService.getUserEffectiveStorageStrategy(file.userId)
             const path = assignment ? `${assignment.userFolder}/${file.filename}` : `users/${file.userId}/${file.filename}`
@@ -262,21 +256,10 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
             const { OneDriveService } = require("../services/onedrive")
             const oneDriveService = new OneDriveService({ clientId: od.clientId, clientSecret: od.clientSecret, tenantId: od.tenantId })
             oneDriveService.setAccessToken(accessToken)
-            try {
-              const directUrl = await oneDriveService.getDownloadUrlByPath(path)
-              const axios = (await import("axios")).default
-              const resp = await axios.get(directUrl, { responseType: 'arraybuffer' })
-              const buffer = Buffer.from(resp.data)
-              set.headers["Content-Type"] = file.mimeType || "application/octet-stream"
-              set.headers["Content-Disposition"] = `attachment; filename=\"${encodeURIComponent(file.originalName)}\"`
-              set.headers["Content-Length"] = buffer.length.toString()
-              logger.info(`OneDrive按路径下载成功: ${path}`)
-              return buffer
-            } catch (err) {
-              logger.error("OneDrive按路径下载失败:", err)
-              set.status = 500
-              return { error: "OneDrive download failed" }
-            }
+            const directUrl = await oneDriveService.getDownloadUrlByPath(path)
+            set.status = 302
+            set.headers["Location"] = directUrl
+            return
           }
         } catch (error) {
           logger.error("OneDrive下载认证失败:", error)
@@ -415,7 +398,7 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
         .get()
 
       if (oneDriveMount) {
-        // 直链：文件存储在OneDrive挂载点中，使用管理员 OneDrive 账号下载
+        // 直链：文件存储在OneDrive挂载点中，使用管理员 OneDrive 账号下载（直链重定向）
         logger.debug(`直链文件存储在OneDrive挂载点中: ${oneDriveMount.mountName}`)
         try {
           const { users } = require("../db/schema")
@@ -469,16 +452,11 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
           const storageService = new StorageService(config)
           storageService.setOneDriveAccessToken(accessToken)
 
-          // 使用OneDrive API下载文件
-          const fileBuffer = await storageService.downloadFile(file.storagePath)
-
-          // 设置响应头
-          set.headers["Content-Type"] = file.mimeType || "application/octet-stream"
-          set.headers["Content-Disposition"] = `attachment; filename="${encodeURIComponent(file.originalName)}"`
-          set.headers["Content-Length"] = fileBuffer.length.toString()
-
-          logger.info(`OneDrive直链文件下载成功: ${file.originalName}`)
-          return fileBuffer
+          // 获取直链并重定向
+          const downloadUrl = await storageService.getDownloadUrl(file.storagePath)
+          set.status = 302
+          set.headers["Location"] = downloadUrl
+          return
         } catch (error) {
           logger.error("OneDrive直链文件下载失败:", error)
           set.status = 500
@@ -492,10 +470,11 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
       if (config.storageType === "r2" || file.storageType === "r2") {
         // 对于R2存储，返回预签名URL进行重定向
         const downloadUrl = await storageService.getDownloadUrl(file.storagePath)
-        set.redirect = downloadUrl
+        set.status = 302
+        set.headers["Location"] = downloadUrl
         return
       } else if (config.storageType === "onedrive" || file.storageType === "onedrive") {
-        // 直链：OneDrive存储 - 始终使用管理员认证（并在过期时自动刷新）
+        // 直链：OneDrive存储 - 始终使用管理员认证（并在过期时自动刷新），返回直链重定向
         try {
           const { users } = require("../db/schema")
           const { OneDriveService } = require("../services/onedrive")
@@ -546,16 +525,14 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
           const storageService = new StorageService(config)
           storageService.setOneDriveAccessToken(accessToken)
 
-          // 改为后端直传：优先按 itemId 下载，失败则按路径回退
+          // 优先按 itemId，失败则按路径回退，最终设置重定向
           try {
-            const fileBuffer = await storageService.downloadFile(file.storagePath)
-            set.headers["Content-Type"] = file.mimeType || "application/octet-stream"
-            set.headers["Content-Disposition"] = `attachment; filename=\"${encodeURIComponent(file.originalName)}\"`
-            set.headers["Content-Length"] = fileBuffer.length.toString()
-            logger.info(`OneDrive直链文件下载成功: ${file.originalName}`)
-            return fileBuffer
+            const directUrl = await storageService.getDownloadUrl(file.storagePath)
+            set.status = 302
+            set.headers["Location"] = directUrl
+            return
           } catch (e) {
-            logger.warn(`直链：按 itemId 下载失败，尝试按路径回退: ${file.storagePath}`)
+            logger.warn(`直链：按 itemId 获取下载URL失败，尝试按路径回退: ${file.storagePath}`)
             const { UserStorageStrategyService } = require("../services/user-storage-strategy")
             const { assignment } = await UserStorageStrategyService.getUserEffectiveStorageStrategy(file.userId)
             const path = assignment ? `${assignment.userFolder}/${file.filename}` : `users/${file.userId}/${file.filename}`
@@ -563,21 +540,10 @@ export const downloadRoutes = new Elysia({ prefix: "/files" })
             const { OneDriveService } = require("../services/onedrive")
             const oneDriveService = new OneDriveService({ clientId: od.clientId, clientSecret: od.clientSecret, tenantId: od.tenantId })
             oneDriveService.setAccessToken(accessToken)
-            try {
-              const directUrl = await oneDriveService.getDownloadUrlByPath(path)
-              const axios = (await import("axios")).default
-              const resp = await axios.get(directUrl, { responseType: 'arraybuffer' })
-              const buffer = Buffer.from(resp.data)
-              set.headers["Content-Type"] = file.mimeType || "application/octet-stream"
-              set.headers["Content-Disposition"] = `attachment; filename=\"${encodeURIComponent(file.originalName)}\"`
-              set.headers["Content-Length"] = buffer.length.toString()
-              logger.info(`OneDrive直链按路径下载成功: ${path}`)
-              return buffer
-            } catch (err) {
-              logger.error("OneDrive直链按路径下载失败:", err)
-              set.status = 500
-              return { error: "OneDrive download failed" }
-            }
+            const directUrl = await oneDriveService.getDownloadUrlByPath(path)
+            set.status = 302
+            set.headers["Location"] = directUrl
+            return
           }
         } catch (error) {
           logger.error("OneDrive直链认证失败:", error)

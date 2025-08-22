@@ -249,6 +249,41 @@ async function initializeDatabase() {
       );
     `)
 
+    // 新增：创建 google_oauth_config、user_storage_assignments、role_storage_defaults 及索引
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS google_oauth_config (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        enabled INTEGER NOT NULL DEFAULT 0,
+        client_id TEXT,
+        client_secret TEXT,
+        redirect_uri TEXT,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS user_storage_assignments (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        strategy_id TEXT NOT NULL REFERENCES storage_strategies(id) ON DELETE CASCADE,
+        user_folder TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS role_storage_defaults (
+        id TEXT PRIMARY KEY,
+        role TEXT NOT NULL UNIQUE,
+        strategy_id TEXT NOT NULL REFERENCES storage_strategies(id) ON DELETE CASCADE,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `)
+
+    sqlite.exec(`
+      CREATE INDEX IF NOT EXISTS idx_user_storage_assignments_user_id ON user_storage_assignments(user_id);
+      CREATE INDEX IF NOT EXISTS idx_user_storage_assignments_strategy_id ON user_storage_assignments(strategy_id);
+      CREATE INDEX IF NOT EXISTS idx_role_storage_defaults_role ON role_storage_defaults(role);
+    `)
+
     // 检查并添加 email_verified 字段
     const userColumns = sqlite.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>
     const hasEmailVerified = userColumns.some(col => col.name === 'email_verified')
@@ -338,8 +373,17 @@ async function initializeDatabase() {
       VALUES ('local', ${Date.now()});
     `)
 
+    // 新增：插入 google_oauth_config 默认数据
+    sqlite.exec(`
+      INSERT OR IGNORE INTO google_oauth_config (id, enabled, updated_at)
+      VALUES (1, 0, ${Date.now()});
+    `)
+
     // 初始化存储策略系统
     await initializeStorageStrategies()
+
+    // 新增：将挂载点幂等迁移为存储策略
+    await migrateMountsToStrategies()
 
     // 初始化管理员账户
     await initializeAdminAccount()
@@ -417,6 +461,96 @@ async function initializeStorageStrategies() {
   }
 }
 
+// 新增：挂载点到存储策略的幂等迁移
+async function migrateMountsToStrategies() {
+  try {
+    logger.info('🔧 迁移挂载点到存储策略（幂等）...')
+
+    const { nanoid } = await import('nanoid')
+    const now = Date.now()
+
+    const storageCfg = sqlite.prepare("SELECT * FROM storage_config LIMIT 1").get() as any
+
+    // OneDrive 挂载点
+    const odMounts = sqlite.prepare("SELECT * FROM onedrive_mount_points WHERE enabled = 1").all() as Array<any>
+    for (const mount of odMounts) {
+      const strategyName = `OneDrive - ${mount.mount_name}`
+      const exists = sqlite.prepare("SELECT 1 FROM storage_strategies WHERE name = ?").get(strategyName) as any
+      if (exists) continue
+
+      const config = {
+        oneDriveClientId: storageCfg?.onedrive_client_id || '',
+        oneDriveTenantId: storageCfg?.onedrive_tenant_id || '',
+        oneDriveClientSecret: storageCfg?.onedrive_client_secret || '',
+        webDavUrl: storageCfg?.onedrive_webdav_url || '',
+        webDavUser: storageCfg?.onedrive_webdav_user || '',
+        webDavPass: storageCfg?.onedrive_webdav_pass || ''
+      }
+
+      const id = nanoid()
+      sqlite.exec(`
+        INSERT INTO storage_strategies (id, name, type, config, is_active, created_at, updated_at)
+        VALUES ('${id}', '${strategyName}', 'onedrive', '${JSON.stringify(config)}', ${storageCfg?.storage_type === 'onedrive' ? 1 : 0}, ${now}, ${now})
+      `)
+      logger.database('INSERT', 'storage_strategies')
+      logger.dbInfo(`✅ 创建OneDrive存储策略: ${strategyName}`)
+    }
+
+    // R2 挂载点
+    const r2Mounts = sqlite.prepare("SELECT * FROM r2_mount_points WHERE enabled = 1").all() as Array<any>
+    for (const mount of r2Mounts) {
+      const strategyName = `R2 - ${mount.mount_name}`
+      const exists = sqlite.prepare("SELECT 1 FROM storage_strategies WHERE name = ?").get(strategyName) as any
+      if (exists) continue
+
+      const config = {
+        r2Endpoint: storageCfg?.r2_endpoint || '',
+        r2Bucket: storageCfg?.r2_bucket || '',
+        r2AccessKey: storageCfg?.r2_access_key || '',
+        r2SecretKey: storageCfg?.r2_secret_key || ''
+      }
+
+      const id = nanoid()
+      sqlite.exec(`
+        INSERT INTO storage_strategies (id, name, type, config, is_active, created_at, updated_at)
+        VALUES ('${id}', '${strategyName}', 'r2', '${JSON.stringify(config)}', ${storageCfg?.storage_type === 'r2' ? 1 : 0}, ${now}, ${now})
+      `)
+      logger.database('INSERT', 'storage_strategies')
+      logger.dbInfo(`✅ 创建R2存储策略: ${strategyName}`)
+    }
+
+    // WebDAV 挂载点
+    try {
+      const wdMounts = sqlite.prepare("SELECT * FROM webdav_mount_points WHERE enabled = 1").all() as Array<any>
+      for (const mount of wdMounts) {
+        const strategyName = `WebDAV - ${mount.mount_name}`
+        const exists = sqlite.prepare("SELECT 1 FROM storage_strategies WHERE name = ?").get(strategyName) as any
+        if (exists) continue
+
+        const config = {
+          webDavUrl: mount.webdav_url || '',
+          webDavUser: mount.username || '',
+          webDavPass: mount.password_encrypted || ''
+        }
+
+        const id = nanoid()
+        sqlite.exec(`
+          INSERT INTO storage_strategies (id, name, type, config, is_active, created_at, updated_at)
+          VALUES ('${id}', '${strategyName}', 'webdav', '${JSON.stringify(config)}', ${storageCfg?.storage_type === 'webdav' ? 1 : 0}, ${now}, ${now})
+        `)
+        logger.database('INSERT', 'storage_strategies')
+        logger.dbInfo(`✅ 创建WebDAV存储策略: ${strategyName}`)
+      }
+    } catch (_) {
+      // webdav_mount_points 表可能不存在，忽略
+    }
+
+    logger.dbInfo('挂载点迁移为策略完成（幂等）')
+  } catch (error) {
+    logger.error('迁移挂载点为策略失败:', error)
+  }
+}
+
 // 初始化用户配额系统
 async function initializeQuotaSystem() {
   try {
@@ -474,7 +608,7 @@ async function initializeQuotaSystem() {
         VALUES ('${quotaId}', '${user.id}', ${defaultQuota}, ${totalUsedStorage}, '${user.role}', ${Date.now()}, ${Date.now()})
       `)
       logger.database('INSERT', 'user_quotas')
-      logger.dbInfo(`已为用户 ${user.id} (${user.role}) 创建配额记录：${Math.round(defaultQuota / 1024 / 1024 / 1024)}GB，已使用：${Math.round(totalUsedStorage / 1024 / 1024)}MB (本地: ${Math.round(localStorage / 1024 / 1024)}MB, R2: ${Math.round(r2Storage / 1024 / 1024)}MB)`)
+      logger.dbInfo(`已为用户 ${user.id} (${user.role}) 创建配额记录：${Math.round(defaultQuota / 1024 / 1024 / 1024)}GB，已使用：${Math.round(totalUsedStorage / 1024 / 1024)}MB (本地: ${Math.round(localStorage / 1024 / 1024)}MB, R2: ${Math.round(r2Storage / 1024 / 1024)}MB)`) 
     }
 
     logger.dbInfo('用户配额系统初始化完成')
@@ -508,7 +642,11 @@ async function validateDatabaseTables() {
       'ip_bans',
       'file_shares',
       'user_quotas',
-      'role_quota_config'
+      'role_quota_config',
+      // 新增检查
+      'google_oauth_config',
+      'user_storage_assignments',
+      'role_storage_defaults'
     ]
 
     // 获取数据库中实际存在的表

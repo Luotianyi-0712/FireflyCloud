@@ -108,7 +108,9 @@ export const uploadRoutes = new Elysia()
 
 				const storageService = new StorageService(config)
 				const fileId = nanoid()
-				const filename = `${fileId}-${file.name}`
+				// OneDrive 使用原始文件名保存，其他存储仍使用带前缀的唯一名
+				const isOneDrive = targetStorageType === "onedrive"
+				const filename = isOneDrive ? file.name : `${fileId}-${file.name}`
 
 				let storagePath: string
 				if (targetStorageType === "r2" && r2MountPoint) {
