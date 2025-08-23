@@ -3,8 +3,10 @@
 import { useState, useEffect } from "react"
 import { useAuth } from "@/components/auth/auth-provider"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,7 +18,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { User, Shield, Trash2, Calendar } from "lucide-react"
+import { User, Shield, Trash2, Calendar, UserPlus } from "lucide-react"
 import { toast } from "sonner"
 
 interface UserItem {
@@ -34,12 +36,15 @@ export function UserManagement({ onUserDeleted }: UserManagementProps) {
   const [users, setUsers] = useState<UserItem[]>([])
   const [loading, setLoading] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [allowUserRegistration, setAllowUserRegistration] = useState(true)
+  const [updatingRegistration, setUpdatingRegistration] = useState(false)
   const { token } = useAuth()
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
 
   useEffect(() => {
     fetchUsers()
+    fetchRegistrationSettings()
   }, [])
 
   const fetchUsers = async () => {
@@ -60,6 +65,70 @@ export function UserManagement({ onUserDeleted }: UserManagementProps) {
       console.error("Failed to fetch users:", error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchRegistrationSettings = async () => {
+    if (!token) return
+
+    try {
+      const response = await fetch(`${API_URL}/site-config`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setAllowUserRegistration(data.allowUserRegistration ?? true)
+      }
+    } catch (error) {
+      console.error("Failed to fetch registration settings:", error)
+    }
+  }
+
+  const handleUpdateRegistrationSetting = async (enabled: boolean) => {
+    if (!token) return
+
+    setUpdatingRegistration(true)
+
+    try {
+      const response = await fetch(`${API_URL}/admin/site-config`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ allowUserRegistration: enabled }),
+      })
+
+      if (response.ok) {
+        setAllowUserRegistration(enabled)
+        toast.success(
+          enabled ? "已开启用户注册" : "已关闭用户注册", 
+          {
+            description: enabled 
+              ? "新用户现在可以注册账户" 
+              : "已禁止新用户注册，注册页面将显示相应提示"
+          }
+        )
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        toast.error("设置失败", {
+          description: errorData.error || "无法更新注册设置"
+        })
+        // 回滚状态
+        setAllowUserRegistration(!enabled)
+      }
+    } catch (error) {
+      console.error("Failed to update registration setting:", error)
+      toast.error("设置失败", {
+        description: "网络连接错误，请稍后重试"
+      })
+      // 回滚状态
+      setAllowUserRegistration(!enabled)
+    } finally {
+      setUpdatingRegistration(false)
     }
   }
 
@@ -126,10 +195,40 @@ export function UserManagement({ onUserDeleted }: UserManagementProps) {
   }
 
   return (
-    <div className="space-y-3">
-      {users.map((user) => (
-        <Card key={user.id}>
-          <CardContent className="p-3 sm:p-4">
+    <div className="space-y-4">
+      {/* 用户注册设置 */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <UserPlus className="h-5 w-5" />
+            用户注册设置
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <Label htmlFor="registration-toggle" className="text-sm font-medium">
+                允许新用户注册
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                关闭后将禁止新用户在注册页面创建账户
+              </p>
+            </div>
+            <Switch
+              id="registration-toggle"
+              checked={allowUserRegistration}
+              onCheckedChange={handleUpdateRegistrationSetting}
+              disabled={updatingRegistration}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 用户列表 */}
+      <div className="space-y-3">
+        {users.map((user) => (
+          <Card key={user.id}>
+            <CardContent className="p-3 sm:p-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
               <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
                 <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10 flex-shrink-0">
@@ -192,6 +291,7 @@ export function UserManagement({ onUserDeleted }: UserManagementProps) {
           </CardContent>
         </Card>
       ))}
+      </div>
     </div>
   )
 }

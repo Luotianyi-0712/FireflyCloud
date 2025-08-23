@@ -237,12 +237,119 @@ const app = new Elysia()
         return { error: "Access denied: IP banned" }
       }
 
+      // 工具函数：检测是否为OneDrive文件ID
+      function isOneDriveFileId(id: string): boolean {
+        // OneDrive文件ID通常包含感叹号，格式类似：20236B000B26DA17!s36871feb50624ea49a98f64de8d9c934
+        return id.includes('!') && (id.includes('s') || id.includes('f'))
+      }
+
       // 获取文件信息
-      const file = await db
-        .select()
-        .from(files)
-        .where(eq(files.id, linkRecord.fileId))
-        .get()
+      let file: any = null
+      
+      // 检查是否为OneDrive文件ID
+      if (isOneDriveFileId(linkRecord.fileId)) {
+        logger.info(`检测到OneDrive文件ID，使用Graph API获取文件信息: ${linkRecord.fileId}`)
+        
+        try {
+          // 获取用户的OneDrive认证信息
+          const { oneDriveAuth, users } = require("./db/schema")
+          const userAuth = await db
+            .select()
+            .from(oneDriveAuth)
+            .where(eq(oneDriveAuth.userId, linkRecord.userId))
+            .get()
+
+          if (!userAuth) {
+            logger.warn(`OneDrive认证信息未找到 - 用户: ${linkRecord.userId}`)
+            set.status = 400
+            return { error: "OneDrive not authenticated" }
+          }
+
+          // 获取存储配置
+          const config = await db.select().from(storageConfig).get()
+          if (!config) {
+            logger.error("存储配置未找到")
+            set.status = 500
+            return { error: "Storage not configured" }
+          }
+
+          // 检查访问令牌是否过期并刷新
+          let accessToken = userAuth.accessToken
+          if (userAuth.expiresAt <= Date.now()) {
+            try {
+              if (!config.oneDriveClientId) {
+                set.status = 400
+                return { error: "OneDrive OAuth not configured" }
+              }
+
+              const { OneDriveService } = require("./services/onedrive")
+              const oneDriveService = new OneDriveService({
+                clientId: config.oneDriveClientId,
+                clientSecret: config.oneDriveClientSecret || "",
+                tenantId: config.oneDriveTenantId || "common",
+              })
+
+              const newTokens = await oneDriveService.refreshToken(userAuth.refreshToken)
+              accessToken = newTokens.accessToken
+
+              // 更新数据库中的令牌
+              await db.update(oneDriveAuth).set({
+                accessToken: newTokens.accessToken,
+                refreshToken: newTokens.refreshToken,
+                expiresAt: newTokens.expiresAt,
+                updatedAt: Date.now(),
+              }).where(eq(oneDriveAuth.id, userAuth.id))
+
+              logger.info(`OneDrive访问令牌刷新成功 - 用户: ${linkRecord.userId}`)
+            } catch (e) {
+              logger.error(`OneDrive访问令牌刷新失败 - 用户: ${linkRecord.userId}`, e)
+              set.status = 401
+              return { error: "OneDrive access token expired, please re-authenticate" }
+            }
+          }
+
+          // 创建OneDrive服务实例并获取文件信息
+          const { OneDriveService } = require("./services/onedrive")
+          const oneDriveService = new OneDriveService({
+            clientId: config.oneDriveClientId!,
+            clientSecret: config.oneDriveClientSecret || "",
+            tenantId: config.oneDriveTenantId || "common",
+          })
+          oneDriveService.setAccessToken(accessToken)
+
+          const fileInfo = await oneDriveService.getItemById(linkRecord.fileId)
+          if (!fileInfo || !fileInfo.name) {
+            logger.warn(`OneDrive文件信息无效: ${linkRecord.fileId}`)
+            set.status = 404
+            return { error: "OneDrive file not found" }
+          }
+
+          // 创建虚拟文件对象，与本地文件对象格式兼容
+          file = {
+            id: linkRecord.fileId,
+            userId: linkRecord.userId,
+            originalName: fileInfo.name,
+            size: fileInfo.size || 0,
+            mimeType: fileInfo.file?.mimeType || "application/octet-stream",
+            storageType: "onedrive",
+            storagePath: linkRecord.fileId, // 对于OneDrive文件，存储路径就是文件ID
+            createdAt: new Date(fileInfo.createdDateTime || Date.now()).getTime(),
+          }
+
+          logger.info(`通过Graph API获取OneDrive文件信息成功: ${fileInfo.name}`)
+        } catch (error) {
+          logger.error(`获取OneDrive文件信息失败: ${linkRecord.fileId}`, error)
+          set.status = 500
+          return { error: "Failed to get OneDrive file info" }
+        }
+      } else {
+        // 原有的本地文件查找逻辑
+        file = await db
+          .select()
+          .from(files)
+          .where(eq(files.id, linkRecord.fileId))
+          .get()
+      }
 
       if (!file) {
         logger.warn(`直链对应的文件未找到: ${linkRecord.fileId}`)

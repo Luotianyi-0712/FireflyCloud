@@ -1,7 +1,5 @@
 "use client"
 
-import type React from "react"
-
 import { useState, useEffect } from "react"
 import * as React from "react"
 import { useAuth } from "@/components/auth/auth-provider"
@@ -27,32 +25,46 @@ export default function RegisterPage() {
   const [countdown, setCountdown] = useState(0)
   const [smtpEnabled, setSmtpEnabled] = useState<boolean | null>(null)
   const [checkingSmtp, setCheckingSmtp] = useState(true)
+  const [registrationAllowed, setRegistrationAllowed] = useState<boolean | null>(null)
+  const [checkingRegistration, setCheckingRegistration] = useState(true)
 
   const { register } = useAuth()
   const router = useRouter()
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
 
-  // 检查 SMTP 状态
+  // 检查 SMTP 状态和注册状态
   useEffect(() => {
-    const checkSmtpStatus = async () => {
+    const checkStatuses = async () => {
       try {
-        const response = await fetch(`${API_URL}/auth/smtp-status`)
-        if (response.ok) {
-          const data = await response.json()
-          setSmtpEnabled(data.enabled)
+        // 检查 SMTP 状态
+        const smtpResponse = await fetch(`${API_URL}/auth/smtp-status`)
+        if (smtpResponse.ok) {
+          const smtpData = await smtpResponse.json()
+          setSmtpEnabled(smtpData.enabled)
         } else {
           setSmtpEnabled(false)
         }
+
+        // 检查注册状态
+        const siteResponse = await fetch(`${API_URL}/site-config`)
+        if (siteResponse.ok) {
+          const siteData = await siteResponse.json()
+          setRegistrationAllowed(siteData.allowUserRegistration ?? true)
+        } else {
+          setRegistrationAllowed(true) // 默认允许注册
+        }
       } catch (error) {
-        console.error("Failed to check SMTP status:", error)
+        console.error("Failed to check statuses:", error)
         setSmtpEnabled(false)
+        setRegistrationAllowed(true)
       } finally {
         setCheckingSmtp(false)
+        setCheckingRegistration(false)
       }
     }
 
-    checkSmtpStatus()
+    checkStatuses()
   }, [API_URL])
 
   // 倒计时效果
@@ -181,6 +193,71 @@ export default function RegisterPage() {
     }
   }
 
+  // 加载中状态
+  if (checkingRegistration || checkingSmtp) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <div className="w-full max-w-md">
+          <div className="flex flex-col items-center mb-8">
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary mb-4">
+              <Cloud className="h-6 w-6 text-primary-foreground" />
+            </div>
+            <h1 className="text-2xl font-bold">FireflyCloud</h1>
+            <p className="text-muted-foreground text-sm">检查系统状态中...</p>
+          </div>
+          <Card className="w-full">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
+  // 注册已关闭的情况
+  if (registrationAllowed === false) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <div className="w-full max-w-md">
+          <div className="flex flex-col items-center mb-8">
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary mb-4">
+              <Cloud className="h-6 w-6 text-primary-foreground" />
+            </div>
+            <h1 className="text-2xl font-bold">FireflyCloud</h1>
+            <p className="text-muted-foreground text-sm">现代化云存储解决方案</p>
+          </div>
+          <Card className="w-full">
+            <CardHeader className="text-center">
+              <CardTitle className="text-2xl font-bold">
+                注册已关闭
+              </CardTitle>
+              <CardDescription>
+                系统管理员已关闭新用户注册功能
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Alert>
+                <AlertDescription>
+                  目前不接受新用户注册。如果您需要账户，请联系系统管理员。
+                </AlertDescription>
+              </Alert>
+              <div className="flex justify-center">
+                <Link href="/login">
+                  <Button variant="outline" className="w-full">
+                    返回登录页面
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
@@ -306,9 +383,9 @@ export default function RegisterPage() {
             <Button
               type="submit"
               className="w-full"
-              disabled={loading || checkingSmtp || (smtpEnabled && !verificationCode)}
+              disabled={loading || checkingSmtp || checkingRegistration || (smtpEnabled === true && !verificationCode)}
             >
-              {loading ? "创建账户中..." : checkingSmtp ? "检查配置中..." : "创建账户"}
+              {loading ? "创建账户中..." : (checkingSmtp || checkingRegistration) ? "检查配置中..." : "创建账户"}
             </Button>
           </form>
 

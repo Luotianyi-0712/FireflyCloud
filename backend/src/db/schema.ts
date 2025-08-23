@@ -103,9 +103,12 @@ export const webdavMountPoints = sqliteTable("webdav_mount_points", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull(),
   folderId: text("folder_id").notNull(),
-  webdavPath: text("webdav_path").notNull(),
   mountName: text("mount_name").notNull(),
-  enabled: integer("enabled", { mode: "boolean" }).default(true),
+  webdavUrl: text("webdav_url").notNull(),
+  username: text("username").notNull(),
+  passwordEncrypted: text("password_encrypted").notNull(),
+  basePath: text("base_path").default("/"),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 })
@@ -128,7 +131,17 @@ export const googleOAuthConfig = sqliteTable("google_oauth_config", {
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
   clientId: text("client_id"),
   clientSecret: text("client_secret"),
-  redirectUri: text("redirect_uri"),
+  redirectUri: text("redirect_uri"), // 保留以便向后兼容，但逐步废弃
+  updatedAt: integer("updated_at").notNull(),
+})
+
+// 谷歌OAuth回调链接表（支持多个域名）
+export const googleOAuthRedirectUris = sqliteTable("google_oauth_redirect_uris", {
+  id: text("id").primaryKey(),
+  redirectUri: text("redirect_uri").notNull().unique(), // 回调链接URL
+  name: text("name").notNull(), // 用户友好的名称（如"主域名"、"测试域名"）
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 })
 
@@ -137,6 +150,7 @@ export const siteConfig = sqliteTable("site_config", {
   id: integer("id").primaryKey().default(1),
   title: text("title"),
   description: text("description"),
+  allowUserRegistration: integer("allow_user_registration", { mode: "boolean" }).notNull().default(true), // 是否允许用户注册
   updatedAt: integer("updated_at").notNull(),
 })
 

@@ -4,7 +4,7 @@ import { bearer } from "@elysiajs/bearer"
 import bcrypt from "bcryptjs"
 import { nanoid } from "nanoid"
 import { db } from "../db"
-import { users, emailVerificationCodes, smtpConfig, googleOAuthConfig, files, storageConfig, userQuotas } from "../db/schema"
+import { users, emailVerificationCodes, smtpConfig, googleOAuthConfig, googleOAuthRedirectUris, files, storageConfig, userQuotas, siteConfig } from "../db/schema"
 import { eq, and, gt } from "drizzle-orm"
 import { sendVerificationEmail, generateVerificationCode } from "../services/email"
 import { QuotaService } from "../services/quota"
@@ -48,9 +48,17 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
   .get("/google-oauth-status", async () => {
     try {
       const config = await db.select().from(googleOAuthConfig).get()
+      
+      // 检查是否有至少一个启用的回调链接
+      const redirectUris = await db
+        .select()
+        .from(googleOAuthRedirectUris)
+        .where(eq(googleOAuthRedirectUris.enabled, true))
+        .all()
+      
       return { 
         enabled: config?.enabled || false,
-        configured: !!(config?.clientId && config?.clientSecret && config?.redirectUri)
+        configured: !!(config?.clientId && config?.clientSecret && redirectUris.length > 0)
       }
     } catch (error) {
       logger.error("Failed to check Google OAuth status:", error)
@@ -61,18 +69,44 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
     try {
       const config = await db.select().from(googleOAuthConfig).get()
       
-      if (!config?.enabled || !config.clientId || !config.clientSecret || !config.redirectUri) {
+      if (!config?.enabled || !config.clientId || !config.clientSecret) {
         set.status = 400
         return { error: "谷歌OAuth未配置或未启用" }
       }
 
-      // 允许前端传入动态 redirectUri（与 OneDrive 逻辑一致）
+      // 获取所有启用的回调链接
+      const redirectUris = await db
+        .select()
+        .from(googleOAuthRedirectUris)
+        .where(eq(googleOAuthRedirectUris.enabled, true))
+        .all()
+
+      if (redirectUris.length === 0) {
+        set.status = 400
+        return { error: "未配置有效的回调链接" }
+      }
+
+      // 允许前端传入动态 redirectUri，但必须在允许的列表中
       const dynamicRedirect = (query as any)?.redirectUri as string | undefined
+      let finalRedirectUri: string
+
+      if (dynamicRedirect) {
+        // 检查传入的redirectUri是否在允许的列表中
+        const allowedUri = redirectUris.find(uri => uri.redirectUri === dynamicRedirect)
+        if (!allowedUri) {
+          set.status = 400
+          return { error: "无效的回调链接" }
+        }
+        finalRedirectUri = dynamicRedirect
+      } else {
+        // 如果没有传入，使用第一个启用的回调链接
+        finalRedirectUri = redirectUris[0].redirectUri
+      }
 
       const googleOAuth = new GoogleOAuthService({
         clientId: config.clientId,
         clientSecret: config.clientSecret,
-        redirectUri: dynamicRedirect || config.redirectUri
+        redirectUri: finalRedirectUri
       })
 
       const authUrl = googleOAuth.getAuthUrl()
@@ -95,15 +129,41 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
       // 获取谷歌OAuth配置
       const config = await db.select().from(googleOAuthConfig).get()
       
-      if (!config?.enabled || !config.clientId || !config.clientSecret || !config.redirectUri) {
+      if (!config?.enabled || !config.clientId || !config.clientSecret) {
         set.status = 400
         return { error: "谷歌OAuth未配置或未启用" }
+      }
+
+      // 获取所有启用的回调链接
+      const redirectUris = await db
+        .select()
+        .from(googleOAuthRedirectUris)
+        .where(eq(googleOAuthRedirectUris.enabled, true))
+        .all()
+
+      if (redirectUris.length === 0) {
+        set.status = 400
+        return { error: "未配置有效的回调链接" }
+      }
+
+      // 验证传入的redirectUri（如果有的话）
+      let finalRedirectUri: string
+      if (redirectUri) {
+        const allowedUri = redirectUris.find(uri => uri.redirectUri === redirectUri)
+        if (!allowedUri) {
+          set.status = 400
+          return { error: "无效的回调链接" }
+        }
+        finalRedirectUri = redirectUri
+      } else {
+        // 如果没有传入，使用第一个启用的回调链接
+        finalRedirectUri = redirectUris[0].redirectUri
       }
 
       const googleOAuth = new GoogleOAuthService({
         clientId: config.clientId,
         clientSecret: config.clientSecret,
-        redirectUri: redirectUri || config.redirectUri
+        redirectUri: finalRedirectUri
       })
 
       // 获取访问令牌
@@ -121,6 +181,15 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
       let user = await db.select().from(users).where(eq(users.email, userInfo.email)).get()
 
       if (!user) {
+        // 检查是否允许用户注册
+        const siteCfg = await db.select().from(siteConfig).get()
+        const allowRegistration = siteCfg?.allowUserRegistration ?? true
+        
+        if (!allowRegistration) {
+          set.status = 403
+          return { error: "系统已关闭新用户注册功能" }
+        }
+
         // 创建新用户
         const userId = nanoid()
         const now = Date.now()
@@ -247,6 +316,15 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
     async ({ body, jwt, set }) => {
       try {
         const { email, password, verificationCode } = body
+
+        // 检查是否允许用户注册
+        const siteCfg = await db.select().from(siteConfig).get()
+        const allowRegistration = siteCfg?.allowUserRegistration ?? true
+        
+        if (!allowRegistration) {
+          set.status = 403
+          return { error: "系统已关闭新用户注册功能" }
+        }
 
         // 检查用户是否已存在
         const existingUser = await db.select().from(users).where(eq(users.email, email)).get()

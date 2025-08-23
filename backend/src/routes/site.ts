@@ -9,7 +9,8 @@ export const publicSiteRoutes = new Elysia()
       const cfg = await db.select().from(siteConfig).get()
       return {
         title: cfg?.title || "FireflyCloud",
-        description: cfg?.description || "云存储"
+        description: cfg?.description || "云存储",
+        allowUserRegistration: cfg?.allowUserRegistration ?? true
       }
     } catch (error) {
       logger.error("获取站点配置失败:", error as unknown as Error)

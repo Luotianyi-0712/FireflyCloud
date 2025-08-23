@@ -41,7 +41,8 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
       const siteCfg = await db.select().from(siteConfig).get()
       return {
         title: siteCfg?.title || "FireflyCloud",
-        description: siteCfg?.description || "云存储"
+        description: siteCfg?.description || "云存储",
+        allowUserRegistration: siteCfg?.allowUserRegistration ?? true
       }
     } catch (error) {
       logger.error("Failed to get site config:", error as unknown as Error)
@@ -52,17 +53,30 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
   // 站点配置：更新
   .put("/site-config", async ({ body, set }) => {
     try {
-      const { title, description } = body
+      const { title, description, allowUserRegistration } = body
       const now = Date.now()
 
       const existing = await db.select().from(siteConfig).get()
+      
+      // 构建更新数据对象
+      const updateData: any = { updatedAt: now }
+      if (title !== undefined) updateData.title = title
+      if (description !== undefined) updateData.description = description
+      if (allowUserRegistration !== undefined) updateData.allowUserRegistration = allowUserRegistration
+
       if (existing) {
-        await db.update(siteConfig).set({ title, description, updatedAt: now }).where(eq(siteConfig.id, 1))
+        await db.update(siteConfig).set(updateData).where(eq(siteConfig.id, 1))
       } else {
-        await db.insert(siteConfig).values({ id: 1, title, description, updatedAt: now })
+        await db.insert(siteConfig).values({ 
+          id: 1, 
+          title: title || "FireflyCloud", 
+          description: description || "云存储",
+          allowUserRegistration: allowUserRegistration ?? true,
+          updatedAt: now 
+        })
       }
 
-      logger.info("Site configuration updated")
+      logger.info("Site configuration updated", { title, description, allowUserRegistration })
       return { message: "Site configuration updated" }
     } catch (error) {
       logger.error("Failed to update site config:", error as unknown as Error)
@@ -71,8 +85,9 @@ export const adminRoutes = new Elysia({ prefix: "/admin" })
     }
   }, {
     body: t.Object({
-      title: t.String(),
-      description: t.String()
+      title: t.Optional(t.String()),
+      description: t.Optional(t.String()),
+      allowUserRegistration: t.Optional(t.Boolean())
     })
   })
   // 列出所有直链（管理员）

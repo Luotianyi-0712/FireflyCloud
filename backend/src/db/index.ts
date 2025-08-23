@@ -71,6 +71,7 @@ async function initializeDatabase() {
         id INTEGER PRIMARY KEY DEFAULT 1,
         title TEXT,
         description TEXT,
+        allow_user_registration INTEGER NOT NULL DEFAULT 1,
         updated_at INTEGER NOT NULL
       );
 
@@ -258,7 +259,7 @@ async function initializeDatabase() {
       );
     `)
 
-    // 新增：创建 google_oauth_config、user_storage_assignments、role_storage_defaults 及索引
+    // 新增：创建 google_oauth_config、google_oauth_redirect_uris、user_storage_assignments、role_storage_defaults 及索引
     sqlite.exec(`
       CREATE TABLE IF NOT EXISTS google_oauth_config (
         id INTEGER PRIMARY KEY DEFAULT 1,
@@ -266,6 +267,15 @@ async function initializeDatabase() {
         client_id TEXT,
         client_secret TEXT,
         redirect_uri TEXT,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS google_oauth_redirect_uris (
+        id TEXT PRIMARY KEY,
+        redirect_uri TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       );
 
@@ -433,6 +443,24 @@ async function initializeDatabase() {
       // 忽略
     }
 
+    // 检查并添加 allow_user_registration 字段到 site_config 表
+    try {
+      const siteConfigColumns = sqlite.prepare("PRAGMA table_info(site_config)").all() as Array<{ name: string }>
+      const hasAllowUserRegistration = siteConfigColumns.some(col => col.name === 'allow_user_registration')
+      
+      if (!hasAllowUserRegistration) {
+        logger.dbInfo('添加 allow_user_registration 字段到 site_config 表...')
+        sqlite.exec('ALTER TABLE site_config ADD COLUMN allow_user_registration INTEGER NOT NULL DEFAULT 1')
+        logger.database('ALTER', 'site_config')
+        logger.dbInfo('allow_user_registration 字段添加成功 (site_config) - 默认允许用户注册')
+      }
+    } catch (e) {
+      // 忽略
+    }
+
+    // 迁移现有的Google OAuth redirect_uri到新表
+    await migrateGoogleOAuthRedirectUris()
+
     // 插入默认数据
     sqlite.exec(`
       INSERT OR IGNORE INTO storage_config (storage_type, updated_at)
@@ -448,8 +476,8 @@ async function initializeDatabase() {
       INSERT OR IGNORE INTO storage_config (id, storage_type, enable_mixed_mode, updated_at)
       VALUES (1, 'local', 0, ${now});
 
-      INSERT OR IGNORE INTO site_config (id, title, description, updated_at)
-      VALUES (1, 'FireflyCloud', '云存储', ${now});
+      INSERT OR IGNORE INTO site_config (id, title, description, allow_user_registration, updated_at)
+      VALUES (1, 'FireflyCloud', '云存储', 1, ${now});
     `)
 
     // 新增：插入 google_oauth_config 默认数据
@@ -504,6 +532,46 @@ async function initializeDatabase() {
   } catch (error) {
     logger.error('数据库初始化失败:', error)
     throw error
+  }
+}
+
+// 迁移Google OAuth redirect URIs
+async function migrateGoogleOAuthRedirectUris() {
+  try {
+    logger.info('🔧 迁移Google OAuth回调链接到新表（幂等）...')
+
+    const { nanoid } = await import('nanoid')
+    const now = Date.now()
+
+    // 检查是否已有redirect URIs在新表中
+    const existingRedirectUris = sqlite.prepare("SELECT COUNT(*) as count FROM google_oauth_redirect_uris").get() as { count: number }
+
+    if (existingRedirectUris.count === 0) {
+      // 从旧的google_oauth_config表中获取redirect_uri
+      const googleOAuthConfig = sqlite.prepare("SELECT redirect_uri FROM google_oauth_config WHERE redirect_uri IS NOT NULL AND redirect_uri != ''").get() as { redirect_uri?: string } | undefined
+
+      if (googleOAuthConfig?.redirect_uri) {
+        logger.dbInfo(`迁移现有回调链接: ${googleOAuthConfig.redirect_uri}`)
+        
+        // 插入到新表中
+        const id = nanoid()
+        sqlite.exec(`
+          INSERT INTO google_oauth_redirect_uris (id, redirect_uri, name, enabled, created_at, updated_at)
+          VALUES ('${id}', '${googleOAuthConfig.redirect_uri}', '默认回调链接', 1, ${now}, ${now})
+        `)
+        
+        logger.database('INSERT', 'google_oauth_redirect_uris')
+        logger.dbInfo('✅ 成功迁移现有回调链接到新表')
+      } else {
+        logger.dbInfo('未找到现有回调链接，跳过迁移')
+      }
+    } else {
+      logger.dbInfo('新表中已有回调链接，跳过迁移')
+    }
+
+    logger.dbInfo('Google OAuth回调链接迁移完成（幂等）')
+  } catch (error) {
+    logger.error('迁移Google OAuth回调链接失败:', error)
   }
 }
 
@@ -724,6 +792,7 @@ async function validateDatabaseTables() {
       'role_quota_config',
       // 新增检查
       'google_oauth_config',
+      'google_oauth_redirect_uris',
       'user_storage_assignments',
       'role_storage_defaults'
     ]
