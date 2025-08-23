@@ -16,6 +16,7 @@ import { shareRoutes } from "./routes/share"
 import { pickupRoutes } from "./routes/pickup"
 import { directLinksRoutes } from "./routes/direct-links"
 import { logsRoutes } from "./routes/logs"
+import { systemRoutes } from "./routes/system"
 import { logger } from "./utils/logger"
 import { startCleanupScheduler } from "./utils/cleanup"
 import { publicSiteRoutes } from "./routes/site"
@@ -167,6 +168,7 @@ const app = new Elysia()
   .use(pickupRoutes)
   .use(directLinksRoutes)
   .use(logsRoutes)
+  .use(systemRoutes)
   .use(publicSiteRoutes)
   // 新格式直链访问路由 (/dl/:filename?token=xxxxx) - 使用专用前缀避免冲突
   .get("/dl/:filename", async ({ params, query, set, headers }) => {

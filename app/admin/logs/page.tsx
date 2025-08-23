@@ -3,6 +3,7 @@
 import { ProtectedRoute } from "@/components/auth/protected-route"
 import { AppLayout } from "@/components/layout/app-layout"
 import { RuntimeLogs } from "@/components/admin/runtime-logs"
+import { SystemInfo } from "@/components/admin/system-info"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -43,7 +44,12 @@ export default function AdminLogsPage() {
           {/* 页面标题 - 移动端优化 */}
           <div className="space-y-1 sm:space-y-2">
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-foreground">运行日志</h1>
-            <p className="text-xs sm:text-sm lg:text-base text-muted-foreground">查看系统实时运行日志和错误信息</p>
+            <p className="text-xs sm:text-sm lg:text-base text-muted-foreground">查看系统详细信息、实时运行日志和错误信息</p>
+          </div>
+
+          {/* 系统信息 */}
+          <div className="w-full min-w-0">
+            <SystemInfo />
           </div>
 
           {/* 运行日志组件 */}
