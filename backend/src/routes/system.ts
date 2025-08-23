@@ -198,10 +198,16 @@ async function getSystemNetworkRates() {
   }
 }
 
-// Linux实时网络速率获取
+// Linux实时网络速率获取 (增强版)
 async function getLinuxNetworkRates() {
   try {
     const fs = await import("fs")
+    
+    // 检查/proc/net/dev文件是否存在
+    if (!fs.existsSync('/proc/net/dev')) {
+      logger.warn("Linux: /proc/net/dev 文件不存在")
+      return { downloadRate: 0, uploadRate: 0 }
+    }
     
     // 两次采样计算速率
     const netDev1 = fs.readFileSync('/proc/net/dev', 'utf8')
@@ -212,22 +218,40 @@ async function getLinuxNetworkRates() {
       const lines = data.split('\n')
       let totalReceived = 0
       let totalSent = 0
+      let validInterfaces = []
       
       for (const line of lines) {
-        if (line.includes(':')) {
+        if (line.includes(':') && !line.includes('Inter-') && !line.includes('face')) {
           const parts = line.trim().split(/\s+/)
-          const interfaceName = parts[0].replace(':', '')
           
-          if (interfaceName !== 'lo') {
-            const bytesReceived = parseInt(parts[1]) || 0
-            const bytesSent = parseInt(parts[9]) || 0
-            totalReceived += bytesReceived
-            totalSent += bytesSent
+          if (parts.length >= 10) {
+            const interfaceName = parts[0].replace(':', '').trim()
+            
+            // 更完善的接口过滤: 排除回环、虚拟、隧道接口
+            if (!interfaceName.match(/^(lo|sit|tun|tap|veth|br-|docker|virbr|vmnet|ppp|dummy|bond)/)) {
+              const bytesReceived = parseInt(parts[1]) || 0
+              const bytesSent = parseInt(parts[9]) || 0
+              
+              // 只统计有效的网络接口（有实际流量或活跃状态）
+              if (bytesReceived >= 0 && bytesSent >= 0) {
+                totalReceived += bytesReceived
+                totalSent += bytesSent
+                validInterfaces.push({
+                  name: interfaceName,
+                  rx: bytesReceived,
+                  tx: bytesSent
+                })
+              }
+            }
           }
         }
       }
       
-      return { received: totalReceived, sent: totalSent }
+      return { 
+        received: totalReceived, 
+        sent: totalSent,
+        interfaces: validInterfaces
+      }
     }
     
     const stats1 = parseNetDev(netDev1)
@@ -237,11 +261,64 @@ async function getLinuxNetworkRates() {
     const uploadRate = Math.max(0, stats2.sent - stats1.sent)
     
     logger.debug(`Linux实时网络速率: 下载=${downloadRate}B/s, 上传=${uploadRate}B/s`)
+    logger.debug(`Linux活跃网络接口: ${stats2.interfaces.map(i => i.name).join(', ')}`)
+    
+    // 如果速率异常高（可能是计数器重置），返回0
+    const maxReasonableRate = 1024 * 1024 * 1024 // 1GB/s
+    if (downloadRate > maxReasonableRate || uploadRate > maxReasonableRate) {
+      logger.warn(`Linux网络速率异常高，可能是计数器重置: 下载=${downloadRate}, 上传=${uploadRate}`)
+      return { downloadRate: 0, uploadRate: 0 }
+    }
+    
     return { downloadRate, uploadRate }
     
-  } catch (error) {
-    logger.warn("Linux网络速率获取失败:", error)
-    return { downloadRate: 0, uploadRate: 0 }
+  } catch (error: any) {
+    logger.error("Linux网络速率获取失败:", error.message)
+    
+    // 备用方案: 使用ip命令（如果可用）
+    try {
+      const { exec } = await import("child_process")
+      const { promisify } = await import("util")
+      const execAsync = promisify(exec)
+      
+      // 使用ip -s link命令获取接口统计信息
+      const { stdout: stats1 } = await execAsync('ip -s link')
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      const { stdout: stats2 } = await execAsync('ip -s link')
+      
+      // 简单解析ip命令输出（这里可以进一步优化）
+      const parseIpStats = (data: string) => {
+        let totalRx = 0, totalTx = 0
+        const lines = data.split('\n')
+        
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i]
+          if (line.includes('RX:') && lines[i + 1]) {
+            const rxLine = lines[i + 1].trim().split(/\s+/)
+            if (rxLine[0]) totalRx += parseInt(rxLine[0]) || 0
+          }
+          if (line.includes('TX:') && lines[i + 1]) {
+            const txLine = lines[i + 1].trim().split(/\s+/)
+            if (txLine[0]) totalTx += parseInt(txLine[0]) || 0
+          }
+        }
+        
+        return { received: totalRx, sent: totalTx }
+      }
+      
+      const backupStats1 = parseIpStats(stats1)
+      const backupStats2 = parseIpStats(stats2)
+      
+      const backupDownloadRate = Math.max(0, backupStats2.received - backupStats1.received)
+      const backupUploadRate = Math.max(0, backupStats2.sent - backupStats1.sent)
+      
+      logger.debug(`Linux备用方案网络速率: 下载=${backupDownloadRate}B/s, 上传=${backupUploadRate}B/s`)
+      return { downloadRate: backupDownloadRate, uploadRate: backupUploadRate }
+      
+    } catch (backupError: any) {
+      logger.warn("Linux备用网络监控方案也失败:", backupError.message)
+      return { downloadRate: 0, uploadRate: 0 }
+    }
   }
 }
 
