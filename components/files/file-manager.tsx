@@ -541,8 +541,8 @@ export function FileManager() {
                       </Button>
                     </div>
                   </CardHeader>
-                  <CardContent className="px-3 md:px-6 overflow-x-auto">
-                    <div className="min-w-full">
+                  <CardContent className="px-3 md:px-6 overflow-x-hidden">
+                    <div className="w-full max-w-full">
                       <FileList 
                         files={files} 
                         onDeleteSuccess={handleDeleteSuccess}

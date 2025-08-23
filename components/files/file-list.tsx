@@ -436,12 +436,12 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
   return (
     <div className="h-[60vh] overflow-y-auto overflow-x-hidden space-y-2 md:space-y-3 pr-2">
       {sortedFiles.map((file) => (
-        <Card key={file.id}>
-          <CardContent className="p-3 md:p-4">
-            <div className="flex items-start md:items-center justify-between gap-2">
-              <div className="flex items-start md:items-center gap-2 md:gap-4 flex-1 min-w-0 overflow-x-hidden">
+        <Card key={file.id} className="w-full max-w-full overflow-hidden">
+          <CardContent className="p-3 md:p-4 w-full">
+            <div className="flex items-start md:items-center justify-between gap-2 w-full">
+              <div className="flex items-start md:items-center gap-2 md:gap-4 flex-1 min-w-0 overflow-hidden">
                 <div 
-                  className={file.isR2Folder || file.mimeType === "application/directory" ? "cursor-pointer" : ""}
+                  className={file.isR2Folder || file.mimeType === "application/directory" ? "cursor-pointer flex-shrink-0" : "flex-shrink-0"}
                   onClick={() => {
                     if (file.isR2Folder || file.mimeType === "application/directory") {
                       handleFolderClick(file);
@@ -456,71 +456,73 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
                     getFileIcon(file.mimeType, file.originalName)
                   )}
                 </div>
-                <div className="flex-1 min-w-0 overflow-x-hidden">
-                  <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2">
-                    <div className="flex items-center gap-2 min-w-0 max-w-full">
+                <div className="flex-1 min-w-0 overflow-hidden w-full">
+                  <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2 w-full">
+                    <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
                       {file.isR2Folder || file.mimeType === "application/directory" ? (
                         <h4 
-                          className="font-medium truncate max-w-[80vw] sm:max-w-full md:max-w-none cursor-pointer hover:text-blue-600 hover:underline text-sm md:text-base" 
+                          className="font-medium truncate max-w-[50vw] sm:max-w-[60vw] md:max-w-[400px] lg:max-w-[600px] cursor-pointer hover:text-blue-600 hover:underline text-sm md:text-base flex-1 min-w-0" 
                           onClick={() => handleFolderClick(file)}
+                          title={file.originalName}
                         >
                           {file.originalName}
                         </h4>
                       ) : (
                         <h4 
-                          className="font-medium truncate max-w-[80vw] sm:max-w-full md:max-w-none cursor-pointer hover:text-blue-600 hover:underline text-sm md:text-base" 
+                          className="font-medium truncate max-w-[50vw] sm:max-w-[60vw] md:max-w-[400px] lg:max-w-[600px] cursor-pointer hover:text-blue-600 hover:underline text-sm md:text-base flex-1 min-w-0" 
                           onClick={() => handleFilePreview(file)}
+                          title={file.originalName}
                         >
                           {file.originalName}
                         </h4>
                       )}
                     </div>
-                    <div className="flex items-center gap-1 flex-wrap">
+                    <div className="flex items-center gap-1 flex-wrap flex-shrink-0">
                       {(file.isR2File || file.isR2Folder) && (
-                        <Badge variant="secondary" className="text-xs flex items-center gap-1">
-                          <Cloud className="h-3 w-3" />
-                          <span className="hidden sm:inline">R2</span>
-                          {file.isR2Folder && <span className="hidden sm:inline">目录</span>}
+                        <Badge variant="secondary" className="text-xs flex items-center gap-1 flex-shrink-0">
+                          <Cloud className="h-3 w-3 flex-shrink-0" />
+                          <span className="hidden sm:inline whitespace-nowrap">R2</span>
+                          {file.isR2Folder && <span className="hidden sm:inline whitespace-nowrap">目录</span>}
                         </Badge>
                       )}
                       {(file.isOneDriveFile || file.isOneDriveFolder) && (
-                        <Badge variant="secondary" className="text-xs flex items-center gap-1 bg-blue-100 text-blue-800">
-                          <Cloud className="h-3 w-3" />
-                          <span className="hidden sm:inline">OneDrive</span>
-                          {file.isOneDriveFolder && <span className="hidden sm:inline">目录</span>}
+                        <Badge variant="secondary" className="text-xs flex items-center gap-1 bg-blue-100 text-blue-800 flex-shrink-0">
+                          <Cloud className="h-3 w-3 flex-shrink-0" />
+                          <span className="hidden sm:inline whitespace-nowrap">OneDrive</span>
+                          {file.isOneDriveFolder && <span className="hidden sm:inline whitespace-nowrap">目录</span>}
                         </Badge>
                       )}
                     </div>
                   </div>
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 text-xs sm:text-sm text-muted-foreground mt-1">
-                    <span>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 text-xs sm:text-sm text-muted-foreground mt-1 overflow-hidden">
+                    <span className="flex-shrink-0">
                       {file.isR2Folder || file.mimeType === "application/directory" 
                         ? `${file.itemCount || 1}个项目` 
                         : formatFileSize(file.size)
                       }
                     </span>
-                    <div className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      <span className="hidden sm:inline">
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <Calendar className="h-3 w-3 flex-shrink-0" />
+                      <span className="hidden sm:inline truncate max-w-[120px]">
                         {file.isR2File && file.lastModified
                           ? formatDate(new Date(file.lastModified).getTime())
                           : formatDate(file.createdAt)
                         }
                       </span>
-                      <span className="sm:hidden">
+                      <span className="sm:hidden truncate max-w-[80px]">
                         {file.isR2File && file.lastModified
                           ? new Date(file.lastModified).toLocaleDateString("zh-CN")
                           : new Date(file.createdAt).toLocaleDateString("zh-CN")
                         }
                       </span>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 flex-shrink-0">
                       {file.isR2File || file.isOneDriveFile ? (
-                        <Cloud className="h-3 w-3" />
+                        <Cloud className="h-3 w-3 flex-shrink-0" />
                       ) : (
-                        <HardDrive className="h-3 w-3" />
+                        <HardDrive className="h-3 w-3 flex-shrink-0" />
                       )}
-                      <Badge variant="outline" className="text-xs">
+                      <Badge variant="outline" className="text-xs flex-shrink-0">
                         {file.storageType.toUpperCase()}
                       </Badge>
                     </div>
@@ -528,9 +530,9 @@ export function FileList({ files, onDeleteSuccess, onFolderNavigate }: FileListP
                 </div>
               </div>
 
-              <div className="flex flex-col md:flex-row items-end md:items-center gap-1 md:gap-2 shrink-0">
+              <div className="flex flex-col md:flex-row items-end md:items-center gap-1 md:gap-2 flex-shrink-0">
                 {/* 移动端：只显示下载按钮和更多操作 */}
-                <div className="md:hidden flex items-center gap-1">
+                <div className="md:hidden flex items-center gap-1 flex-shrink-0">
                   <Button
                     variant="outline"
                     size="sm"

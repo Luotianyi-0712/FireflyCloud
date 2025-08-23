@@ -169,8 +169,8 @@ export function FolderBreadcrumb({ currentFolderId, onFolderSelect, r2MountInfo,
   }
 
   return (
-    <Breadcrumb>
-      <BreadcrumbList>
+    <Breadcrumb className="overflow-hidden">
+      <BreadcrumbList className="flex-wrap">
         {/* 根目录 */}
         <BreadcrumbItem>
           <BreadcrumbLink
@@ -179,22 +179,25 @@ export function FolderBreadcrumb({ currentFolderId, onFolderSelect, r2MountInfo,
               e.preventDefault()
               onFolderSelect(null)
             }}
-            className="flex items-center gap-1"
+            className="flex items-center gap-1 flex-shrink-0"
           >
-            <Home className="h-4 w-4" />
-            根目录
+            <Home className="h-4 w-4 flex-shrink-0" />
+            <span className="hidden sm:inline">根目录</span>
+            <span className="sm:hidden">根</span>
           </BreadcrumbLink>
         </BreadcrumbItem>
 
         {/* 文件夹路径 */}
         {breadcrumbPath.map((folder, index) => (
-          <div key={folder.id} className="flex items-center">
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
+          <div key={folder.id} className="flex items-center min-w-0">
+            <BreadcrumbSeparator className="flex-shrink-0" />
+            <BreadcrumbItem className="min-w-0">
               {index === breadcrumbPath.length - 1 && !r2MountInfo && !oneDriveMountInfo ? (
-                <BreadcrumbPage className="flex items-center gap-1">
-                  <Folder className="h-4 w-4" />
-                  {folder.name}
+                <BreadcrumbPage className="flex items-center gap-1 min-w-0">
+                  <Folder className="h-4 w-4 flex-shrink-0" />
+                  <span className="truncate max-w-[100px] sm:max-w-[150px] md:max-w-[200px]" title={folder.name}>
+                    {folder.name}
+                  </span>
                 </BreadcrumbPage>
               ) : (
                 <BreadcrumbLink
@@ -203,10 +206,12 @@ export function FolderBreadcrumb({ currentFolderId, onFolderSelect, r2MountInfo,
                     e.preventDefault()
                     onFolderSelect(folder.id)
                   }}
-                  className="flex items-center gap-1"
+                  className="flex items-center gap-1 min-w-0"
                 >
-                  <Folder className="h-4 w-4" />
-                  {folder.name}
+                  <Folder className="h-4 w-4 flex-shrink-0" />
+                  <span className="truncate max-w-[100px] sm:max-w-[150px] md:max-w-[200px]" title={folder.name}>
+                    {folder.name}
+                  </span>
                 </BreadcrumbLink>
               )}
             </BreadcrumbItem>
@@ -216,8 +221,8 @@ export function FolderBreadcrumb({ currentFolderId, onFolderSelect, r2MountInfo,
         {/* R2挂载点显示 */}
         {r2MountInfo && (
           <>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
+            <BreadcrumbSeparator className="flex-shrink-0" />
+            <BreadcrumbItem className="min-w-0">
               <BreadcrumbLink
                 href="#"
                 onClick={(e) => {
@@ -226,10 +231,12 @@ export function FolderBreadcrumb({ currentFolderId, onFolderSelect, r2MountInfo,
                     onR2Navigate(r2MountInfo.r2Path)
                   }
                 }}
-                className="flex items-center gap-1 text-purple-600"
+                className="flex items-center gap-1 text-purple-600 min-w-0"
               >
-                <Cloud className="h-4 w-4" />
-                {r2MountInfo.mountName}
+                <Cloud className="h-4 w-4 flex-shrink-0" />
+                <span className="truncate max-w-[80px] sm:max-w-[120px] md:max-w-[150px]" title={r2MountInfo.mountName}>
+                  {r2MountInfo.mountName}
+                </span>
               </BreadcrumbLink>
             </BreadcrumbItem>
 
@@ -237,13 +244,15 @@ export function FolderBreadcrumb({ currentFolderId, onFolderSelect, r2MountInfo,
             {(() => {
               const r2PathSegments = parseR2Path(r2MountInfo.currentR2Path || r2MountInfo.r2Path, r2MountInfo.r2Path)
               return r2PathSegments.map((segment, index) => (
-                <div key={`r2-${index}`} className="flex items-center">
-                  <BreadcrumbSeparator />
-                  <BreadcrumbItem>
+                <div key={`r2-${index}`} className="flex items-center min-w-0">
+                  <BreadcrumbSeparator className="flex-shrink-0" />
+                  <BreadcrumbItem className="min-w-0">
                     {index === r2PathSegments.length - 1 ? (
-                      <BreadcrumbPage className="flex items-center gap-1 text-purple-600">
-                        <Folder className="h-4 w-4" />
-                        {segment}
+                      <BreadcrumbPage className="flex items-center gap-1 text-purple-600 min-w-0">
+                        <Folder className="h-4 w-4 flex-shrink-0" />
+                        <span className="truncate max-w-[80px] sm:max-w-[120px] md:max-w-[150px]" title={segment}>
+                          {segment}
+                        </span>
                       </BreadcrumbPage>
                     ) : (
                       <BreadcrumbLink
@@ -255,10 +264,12 @@ export function FolderBreadcrumb({ currentFolderId, onFolderSelect, r2MountInfo,
                             onR2Navigate(targetPath)
                           }
                         }}
-                        className="flex items-center gap-1 text-purple-600"
+                        className="flex items-center gap-1 text-purple-600 min-w-0"
                       >
-                        <Folder className="h-4 w-4" />
-                        {segment}
+                        <Folder className="h-4 w-4 flex-shrink-0" />
+                        <span className="truncate max-w-[80px] sm:max-w-[120px] md:max-w-[150px]" title={segment}>
+                          {segment}
+                        </span>
                       </BreadcrumbLink>
                     )}
                   </BreadcrumbItem>
@@ -271,8 +282,8 @@ export function FolderBreadcrumb({ currentFolderId, onFolderSelect, r2MountInfo,
         {/* OneDrive挂载点显示 */}
         {oneDriveMountInfo && (
           <>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
+            <BreadcrumbSeparator className="flex-shrink-0" />
+            <BreadcrumbItem className="min-w-0">
               <BreadcrumbLink
                 href="#"
                 onClick={(e) => {
@@ -281,10 +292,12 @@ export function FolderBreadcrumb({ currentFolderId, onFolderSelect, r2MountInfo,
                     onOneDriveNavigate(oneDriveMountInfo.oneDrivePath)
                   }
                 }}
-                className="flex items-center gap-1 text-blue-600"
+                className="flex items-center gap-1 text-blue-600 min-w-0"
               >
-                <Cloud className="h-4 w-4" />
-                {oneDriveMountInfo.mountName}
+                <Cloud className="h-4 w-4 flex-shrink-0" />
+                <span className="truncate max-w-[80px] sm:max-w-[120px] md:max-w-[150px]" title={oneDriveMountInfo.mountName}>
+                  {oneDriveMountInfo.mountName}
+                </span>
               </BreadcrumbLink>
             </BreadcrumbItem>
 
@@ -292,13 +305,15 @@ export function FolderBreadcrumb({ currentFolderId, onFolderSelect, r2MountInfo,
             {(() => {
               const onedrivePathSegments = parseOneDrivePath(oneDriveMountInfo.currentOneDrivePath || oneDriveMountInfo.oneDrivePath, oneDriveMountInfo.oneDrivePath)
               return onedrivePathSegments.map((segment, index) => (
-                <div key={`onedrive-${index}`} className="flex items-center">
-                  <BreadcrumbSeparator />
-                  <BreadcrumbItem>
+                <div key={`onedrive-${index}`} className="flex items-center min-w-0">
+                  <BreadcrumbSeparator className="flex-shrink-0" />
+                  <BreadcrumbItem className="min-w-0">
                     {index === onedrivePathSegments.length - 1 ? (
-                      <BreadcrumbPage className="flex items-center gap-1 text-blue-600">
-                        <Folder className="h-4 w-4" />
-                        {segment}
+                      <BreadcrumbPage className="flex items-center gap-1 text-blue-600 min-w-0">
+                        <Folder className="h-4 w-4 flex-shrink-0" />
+                        <span className="truncate max-w-[80px] sm:max-w-[120px] md:max-w-[150px]" title={segment}>
+                          {segment}
+                        </span>
                       </BreadcrumbPage>
                     ) : (
                       <BreadcrumbLink
@@ -310,10 +325,12 @@ export function FolderBreadcrumb({ currentFolderId, onFolderSelect, r2MountInfo,
                             onOneDriveNavigate(targetPath)
                           }
                         }}
-                        className="flex items-center gap-1 text-blue-600"
+                        className="flex items-center gap-1 text-blue-600 min-w-0"
                       >
-                        <Folder className="h-4 w-4" />
-                        {segment}
+                        <Folder className="h-4 w-4 flex-shrink-0" />
+                        <span className="truncate max-w-[80px] sm:max-w-[120px] md:max-w-[150px]" title={segment}>
+                          {segment}
+                        </span>
                       </BreadcrumbLink>
                     )}
                   </BreadcrumbItem>
