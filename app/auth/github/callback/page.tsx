@@ -1,10 +1,10 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/components/auth/auth-provider"
 
-export default function GitHubCallbackPage() {
+function GitHubCallbackContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { loginWithGitHub } = useAuth()
@@ -45,5 +45,20 @@ export default function GitHubCallbackPage() {
         <p className="mt-4 text-muted-foreground">正在处理GitHub登录...</p>
       </div>
     </div>
+  )
+}
+
+export default function GitHubCallbackPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">正在加载...</p>
+        </div>
+      </div>
+    }>
+      <GitHubCallbackContent />
+    </Suspense>
   )
 } 
