@@ -21,6 +21,9 @@ interface AuthContextType {
   // 暴露谷歌相关方法
   loginWithGoogle: (code: string) => Promise<void>
   getGoogleAuthUrl: () => Promise<string>
+  // 暴露GitHub相关方法
+  loginWithGitHub: (code: string) => Promise<void>
+  getGitHubAuthUrl: () => Promise<string>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -122,12 +125,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const getGoogleAuthUrl = async (): Promise<string> => {
-    // 与 OneDrive 一致：由前端构造当前页面 origin 的 redirectUri 并传递给后端
-    const redirectUri = typeof window !== 'undefined'
-      ? `${window.location.origin}/auth/google/callback`
-      : ''
-
-    const url = `${API_URL}/auth/google-oauth-url${redirectUri ? `?redirectUri=${encodeURIComponent(redirectUri)}` : ''}`
+    // 传递当前的origin，让后端智能匹配合适的回调链接
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    const url = `${API_URL}/auth/google-oauth-url${origin ? `?origin=${encodeURIComponent(origin)}` : ''}`
     const response = await fetch(url)
     
     if (!response.ok) {
@@ -140,21 +140,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const loginWithGoogle = async (code: string) => {
-    const redirectUri = typeof window !== 'undefined'
-      ? `${window.location.origin}/auth/google/callback`
-      : ''
-
     const response = await fetch(`${API_URL}/auth/google-oauth-callback`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ code, redirectUri }),
+      body: JSON.stringify({ code }),
     })
 
     if (!response.ok) {
       const error = await response.json()
       throw new Error(error.error || "谷歌登录失败，请稍后重试")
+    }
+
+    const data = await response.json()
+    setToken(data.token)
+    setUser(data.user)
+    if (isClient && typeof window !== 'undefined') {
+      localStorage.setItem("token", data.token)
+    }
+  }
+
+  const getGitHubAuthUrl = async (): Promise<string> => {
+    // 传递当前的origin，让后端智能匹配合适的回调链接
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    const url = `${API_URL}/auth/github-oauth-url${origin ? `?origin=${encodeURIComponent(origin)}` : ''}`
+    const response = await fetch(url)
+    
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "获取GitHub授权链接失败")
+    }
+
+    const data = await response.json()
+    return data.authUrl
+  }
+
+  const loginWithGitHub = async (code: string) => {
+    const response = await fetch(`${API_URL}/auth/github-oauth-callback`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ code }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "GitHub登录失败，请稍后重试")
     }
 
     const data = await response.json()
@@ -182,6 +215,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         register,
         loginWithGoogle,
         getGoogleAuthUrl,
+        loginWithGitHub,
+        getGitHubAuthUrl,
         logout,
         loading,
       }}

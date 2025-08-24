@@ -279,6 +279,23 @@ async function initializeDatabase() {
         updated_at INTEGER NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS github_oauth_config (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        enabled INTEGER NOT NULL DEFAULT 0,
+        client_id TEXT,
+        client_secret TEXT,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS github_oauth_redirect_uris (
+        id TEXT PRIMARY KEY,
+        redirect_uri TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS user_storage_assignments (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

@@ -4,11 +4,12 @@ import { bearer } from "@elysiajs/bearer"
 import bcrypt from "bcryptjs"
 import { nanoid } from "nanoid"
 import { db } from "../db"
-import { users, emailVerificationCodes, smtpConfig, googleOAuthConfig, googleOAuthRedirectUris, files, storageConfig, userQuotas, siteConfig } from "../db/schema"
+import { users, emailVerificationCodes, smtpConfig, googleOAuthConfig, googleOAuthRedirectUris, githubOAuthConfig, githubOAuthRedirectUris, files, storageConfig, userQuotas, siteConfig } from "../db/schema"
 import { eq, and, gt } from "drizzle-orm"
 import { sendVerificationEmail, generateVerificationCode } from "../services/email"
 import { QuotaService } from "../services/quota"
 import { GoogleOAuthService } from "../services/google-oauth"
+import { GitHubOAuthService } from "../services/github-oauth"
 import { logger } from "../utils/logger"
 
 // 检查 SMTP 是否启用的辅助函数
@@ -65,6 +66,26 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
       return { enabled: false, configured: false }
     }
   })
+  .get("/github-oauth-status", async () => {
+    try {
+      const config = await db.select().from(githubOAuthConfig).get()
+      
+      // 检查是否有至少一个启用的回调链接
+      const redirectUris = await db
+        .select()
+        .from(githubOAuthRedirectUris)
+        .where(eq(githubOAuthRedirectUris.enabled, true))
+        .all()
+      
+      return { 
+        enabled: config?.enabled || false,
+        configured: !!(config?.clientId && config?.clientSecret && redirectUris.length > 0)
+      }
+    } catch (error) {
+      logger.error("Failed to check GitHub OAuth status:", error)
+      return { enabled: false, configured: false }
+    }
+  })
   .get("/google-oauth-url", async ({ query, set }) => {
     try {
       const config = await db.select().from(googleOAuthConfig).get()
@@ -86,20 +107,27 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
         return { error: "未配置有效的回调链接" }
       }
 
-      // 允许前端传入动态 redirectUri，但必须在允许的列表中
-      const dynamicRedirect = (query as any)?.redirectUri as string | undefined
+      // 智能选择回调链接
       let finalRedirectUri: string
+      const { origin } = query as { origin?: string }
 
-      if (dynamicRedirect) {
-        // 检查传入的redirectUri是否在允许的列表中
-        const allowedUri = redirectUris.find(uri => uri.redirectUri === dynamicRedirect)
-        if (!allowedUri) {
-          set.status = 400
-          return { error: "无效的回调链接" }
+      if (origin) {
+        // 构造期望的回调链接
+        const expectedRedirectUri = `${origin}/auth/google/callback`
+        
+        // 寻找匹配的回调链接
+        const matchedUri = redirectUris.find(uri => uri.redirectUri === expectedRedirectUri)
+        
+        if (matchedUri) {
+          finalRedirectUri = matchedUri.redirectUri
+          logger.debug(`使用匹配的Google OAuth回调链接: ${finalRedirectUri}`)
+        } else {
+          // 如果没有找到完全匹配的，使用第一个启用的回调链接
+          finalRedirectUri = redirectUris[0].redirectUri
+          logger.debug(`未找到匹配的回调链接，使用默认的: ${finalRedirectUri}`)
         }
-        finalRedirectUri = dynamicRedirect
       } else {
-        // 如果没有传入，使用第一个启用的回调链接
+        // 如果没有传入origin，使用第一个启用的回调链接
         finalRedirectUri = redirectUris[0].redirectUri
       }
 
@@ -117,28 +145,20 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
       return { error: "生成授权链接失败" }
     }
   })
-  .post("/google-oauth-callback", async ({ body, jwt, set }) => {
+  .get("/github-oauth-url", async ({ query, set }) => {
     try {
-      const { code, redirectUri } = body as { code?: string; redirectUri?: string }
-
-      if (!code) {
-        set.status = 400
-        return { error: "缺少授权码" }
-      }
-
-      // 获取谷歌OAuth配置
-      const config = await db.select().from(googleOAuthConfig).get()
+      const config = await db.select().from(githubOAuthConfig).get()
       
       if (!config?.enabled || !config.clientId || !config.clientSecret) {
         set.status = 400
-        return { error: "谷歌OAuth未配置或未启用" }
+        return { error: "GitHub OAuth未配置或未启用" }
       }
 
       // 获取所有启用的回调链接
       const redirectUris = await db
         .select()
-        .from(googleOAuthRedirectUris)
-        .where(eq(googleOAuthRedirectUris.enabled, true))
+        .from(githubOAuthRedirectUris)
+        .where(eq(githubOAuthRedirectUris.enabled, true))
         .all()
 
       if (redirectUris.length === 0) {
@@ -146,39 +166,106 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
         return { error: "未配置有效的回调链接" }
       }
 
-      // 验证传入的redirectUri（如果有的话）
+      // 智能选择回调链接
       let finalRedirectUri: string
-      if (redirectUri) {
-        const allowedUri = redirectUris.find(uri => uri.redirectUri === redirectUri)
-        if (!allowedUri) {
-          set.status = 400
-          return { error: "无效的回调链接" }
+      const { origin } = query as { origin?: string }
+
+      if (origin) {
+        // 构造期望的回调链接
+        const expectedRedirectUri = `${origin}/auth/github/callback`
+        
+        // 寻找匹配的回调链接
+        const matchedUri = redirectUris.find(uri => uri.redirectUri === expectedRedirectUri)
+        
+        if (matchedUri) {
+          finalRedirectUri = matchedUri.redirectUri
+          logger.debug(`使用匹配的GitHub OAuth回调链接: ${finalRedirectUri}`)
+        } else {
+          // 如果没有找到完全匹配的，使用第一个启用的回调链接
+          finalRedirectUri = redirectUris[0].redirectUri
+          logger.debug(`未找到匹配的回调链接，使用默认的: ${finalRedirectUri}`)
         }
-        finalRedirectUri = redirectUri
       } else {
-        // 如果没有传入，使用第一个启用的回调链接
+        // 如果没有传入origin，使用第一个启用的回调链接
         finalRedirectUri = redirectUris[0].redirectUri
       }
 
-      const googleOAuth = new GoogleOAuthService({
+      const githubOAuth = new GitHubOAuthService({
         clientId: config.clientId,
         clientSecret: config.clientSecret,
         redirectUri: finalRedirectUri
       })
 
+      const authUrl = githubOAuth.getAuthUrl()
+      return { authUrl }
+    } catch (error) {
+      logger.error("生成GitHub OAuth URL失败:", error)
+      set.status = 500
+      return { error: "生成授权链接失败" }
+    }
+  })
+  .post("/google-oauth-callback", async ({ body, jwt, set }) => {
+    try {
+      const { code } = body as { code: string }
+
+      if (!code) {
+        set.status = 400
+        return { error: "缺少授权码" }
+      }
+
+      logger.info(`处理Google OAuth回调，授权码: ${code.substring(0, 10)}...`)
+
+      // 获取谷歌OAuth配置
+      const googleConfig = await db.select().from(googleOAuthConfig).get()
+      
+      if (!googleConfig?.enabled || !googleConfig.clientId || !googleConfig.clientSecret) {
+        set.status = 400
+        return { error: "谷歌OAuth未配置或未启用" }
+      }
+
+      // 获取所有启用的回调链接
+      const googleRedirectUris = await db
+        .select()
+        .from(googleOAuthRedirectUris)
+        .where(eq(googleOAuthRedirectUris.enabled, true))
+        .all()
+
+      if (googleRedirectUris.length === 0) {
+        set.status = 400
+        return { error: "未配置有效的回调链接" }
+      }
+
+      // 使用第一个启用的回调链接
+      const selectedRedirectUri = googleRedirectUris[0].redirectUri
+      
+      logger.info(`使用Google OAuth回调链接: ${selectedRedirectUri}`)
+
+      // 创建Google OAuth服务实例
+      const googleOAuthService = new GoogleOAuthService({
+        clientId: googleConfig.clientId,
+        clientSecret: googleConfig.clientSecret,
+        redirectUri: selectedRedirectUri
+      })
+
+      logger.info("开始获取Google访问令牌...")
+      
       // 获取访问令牌
-      const tokenResponse = await googleOAuth.getAccessToken(code)
+      const googleTokenResponse = await googleOAuthService.getAccessToken(code)
+      
+      logger.info("Google访问令牌获取成功，开始获取用户信息...")
       
       // 获取用户信息
-      const userInfo = await googleOAuth.getUserInfo(tokenResponse.access_token)
+      const googleUserInfo = await googleOAuthService.getUserInfo(googleTokenResponse.access_token)
 
-      if (!userInfo.verified_email) {
+      if (!googleUserInfo.verified_email) {
         set.status = 400
         return { error: "谷歌账户邮箱未验证" }
       }
 
+      logger.info(`Google用户信息获取成功: ${googleUserInfo.email}`)
+
       // 检查用户是否已存在
-      let user = await db.select().from(users).where(eq(users.email, userInfo.email)).get()
+      let user = await db.select().from(users).where(eq(users.email, googleUserInfo.email)).get()
 
       if (!user) {
         // 检查是否允许用户注册
@@ -196,7 +283,7 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
 
         await db.insert(users).values({
           id: userId,
-          email: userInfo.email,
+          email: googleUserInfo.email,
           password: "", // 谷歌登录用户不需要密码
           role: "user",
           emailVerified: true, // 谷歌账户已验证
@@ -206,7 +293,136 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
 
         user = {
           id: userId,
-          email: userInfo.email,
+          email: googleUserInfo.email,
+          password: "",
+          role: "user",
+          emailVerified: true,
+          createdAt: now,
+          updatedAt: now,
+        }
+
+        // 为新用户创建配额
+        await QuotaService.createUserQuota(userId, "user")
+        
+        logger.info(`创建新Google用户: ${googleUserInfo.email}`)
+      } else {
+        logger.info(`Google用户登录: ${googleUserInfo.email}`)
+      }
+
+      // 生成JWT令牌
+      const token = await jwt.sign({
+        userId: user.id,
+        email: user.email,
+        role: user.role,
+      })
+
+      return {
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          emailVerified: user.emailVerified,
+        },
+      }
+    } catch (error) {
+      logger.error("谷歌OAuth回调处理失败:", error)
+      set.status = 500
+      return { error: "登录失败，请稍后重试" }
+    }
+  }, {
+    body: t.Object({
+      code: t.String(),
+    }),
+  })
+  .post("/github-oauth-callback", async ({ body, jwt, set }) => {
+    try {
+      const { code, redirectUri } = body as { code?: string; redirectUri?: string }
+
+      if (!code) {
+        set.status = 400
+        return { error: "缺少授权码" }
+      }
+
+      // 获取GitHub OAuth配置
+      const config = await db.select().from(githubOAuthConfig).get()
+      
+      if (!config?.enabled || !config.clientId || !config.clientSecret) {
+        set.status = 400
+        return { error: "GitHub OAuth未配置或未启用" }
+      }
+
+      // 获取所有启用的回调链接
+      const redirectUris = await db
+        .select()
+        .from(githubOAuthRedirectUris)
+        .where(eq(githubOAuthRedirectUris.enabled, true))
+        .all()
+
+      if (redirectUris.length === 0) {
+        set.status = 400
+        return { error: "未配置有效的回调链接" }
+      }
+
+      // 确定使用的回调链接
+      let finalRedirectUri: string
+      if (redirectUri) {
+        const allowedUri = redirectUris.find(uri => uri.redirectUri === redirectUri)
+        if (!allowedUri) {
+          set.status = 400
+          return { error: "无效的回调链接" }
+        }
+        finalRedirectUri = redirectUri
+      } else {
+        // 如果没有传入，使用第一个启用的回调链接
+        finalRedirectUri = redirectUris[0].redirectUri
+      }
+
+      const githubOAuth = new GitHubOAuthService({
+        clientId: config.clientId,
+        clientSecret: config.clientSecret,
+        redirectUri: finalRedirectUri
+      })
+
+      // 获取访问令牌
+      const tokenResponse = await githubOAuth.getAccessToken(code)
+      
+      // 获取用户邮箱
+      const userEmail = await githubOAuth.getPrimaryEmail(tokenResponse.access_token)
+      
+      // 获取用户信息
+      const userInfo = await githubOAuth.getUserInfo(tokenResponse.access_token)
+
+      // 检查用户是否已存在
+      let user = await db.select().from(users).where(eq(users.email, userEmail)).get()
+
+      if (!user) {
+        // 检查是否允许用户注册
+        const siteCfg = await db.select().from(siteConfig).get()
+        const allowRegistration = siteCfg?.allowUserRegistration ?? true
+        
+        if (!allowRegistration) {
+          set.status = 403
+          return { error: "系统已关闭新用户注册功能" }
+        }
+
+        // 创建新用户
+        const userId = nanoid()
+        const now = Date.now()
+
+        await db.insert(users).values({
+          id: userId,
+          email: userEmail,
+          password: "", // GitHub登录用户不需要密码
+          role: "user",
+          emailVerified: true, // GitHub账户已验证
+          createdAt: now,
+          updatedAt: now,
+        })
+
+        user = {
+          id: userId,
+          email: userEmail,
           password: "",
           role: "user",
           emailVerified: true,
@@ -235,7 +451,7 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
         },
       }
     } catch (error) {
-      logger.error("谷歌OAuth回调处理失败:", error)
+      logger.error("GitHub OAuth回调处理失败:", error)
       set.status = 500
       return { error: "登录失败，请稍后重试" }
     }

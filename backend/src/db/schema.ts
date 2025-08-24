@@ -145,6 +145,25 @@ export const googleOAuthRedirectUris = sqliteTable("google_oauth_redirect_uris",
   updatedAt: integer("updated_at").notNull(),
 })
 
+// GitHub OAuth配置表
+export const githubOAuthConfig = sqliteTable("github_oauth_config", {
+  id: integer("id").primaryKey().default(1),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
+  clientId: text("client_id"),
+  clientSecret: text("client_secret"),
+  updatedAt: integer("updated_at").notNull(),
+})
+
+// GitHub OAuth回调链接表（支持多个域名）
+export const githubOAuthRedirectUris = sqliteTable("github_oauth_redirect_uris", {
+  id: text("id").primaryKey(),
+  redirectUri: text("redirect_uri").notNull().unique(), // 回调链接URL
+  name: text("name").notNull(), // 用户友好的名称（如"主域名"、"测试域名"）
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+})
+
 // 站点配置表（标题、描述等）
 export const siteConfig = sqliteTable("site_config", {
   id: integer("id").primaryKey().default(1),
