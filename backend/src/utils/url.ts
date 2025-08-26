@@ -1,83 +1,43 @@
 import { logger } from "./logger"
 
 /**
- * 从请求头中获取基础URL
- * 支持反向代理场景，优先使用自动检测
+ * 获取后端基础URL
+ * 用于生成后端API的完整URL地址
  */
 export function getBaseUrl(headers: Record<string, string | undefined>): string {
-  // 1. 优先从请求头中自动获取域名
-  // 检查反向代理头信息
-  const forwardedProto = headers['x-forwarded-proto'] || headers['x-forwarded-protocol']
-  const forwardedHost = headers['x-forwarded-host'] || headers['x-forwarded-server']
-  const host = headers['host']
-  const origin = headers['origin']
-  const referer = headers['referer']
-
-  let protocol = 'http'
-  let hostname = 'localhost:8080'
-  let autoDetected = false
-
-  // 确定协议
-  if (forwardedProto) {
-    protocol = forwardedProto
-    logger.debug(`从 X-Forwarded-Proto 获取协议: ${protocol}`)
-    autoDetected = true
-  } else if (headers['x-forwarded-ssl'] === 'on' || headers['x-forwarded-scheme'] === 'https') {
-    protocol = 'https'
-    logger.debug(`从其他代理头判断为 HTTPS 协议`)
-    autoDetected = true
-  }
-
-  // 确定主机名
-  if (forwardedHost) {
-    hostname = forwardedHost
-    logger.debug(`从 X-Forwarded-Host 获取主机名: ${hostname}`)
-    autoDetected = true
-  } else if (host && !host.includes('127.0.0.1') && !host.includes('localhost')) {
-    hostname = host
-    logger.debug(`从 Host 头获取主机名: ${hostname}`)
-    autoDetected = true
-  }
-
-  // 如果自动检测成功，使用检测结果
-  if (autoDetected) {
-    const baseUrl = `${protocol}://${hostname}`
-    logger.debug(`自动检测成功，使用基础URL: ${baseUrl}`)
-    return baseUrl
-  }
-
-  // 尝试从Origin或Referer获取
-  if (origin && !origin.includes('127.0.0.1') && !origin.includes('localhost')) {
-    try {
-      const originUrl = new URL(origin)
-      const baseUrl = `${originUrl.protocol}//${originUrl.host}`
-      logger.debug(`从 Origin 获取基础URL: ${baseUrl}`)
-      return baseUrl
-    } catch (e) {
-      logger.debug(`解析 Origin 失败: ${origin}`)
-    }
-  }
-
-  if (referer && !referer.includes('127.0.0.1') && !referer.includes('localhost')) {
-    try {
-      const refererUrl = new URL(referer)
-      const baseUrl = `${refererUrl.protocol}//${refererUrl.host}`
-      logger.debug(`从 Referer 获取基础URL: ${baseUrl}`)
-      return baseUrl
-    } catch (e) {
-      logger.debug(`解析 Referer 失败: ${referer}`)
-    }
-  }
-
-  // 2. 自动检测失败时，使用环境变量作为回退
+  // 1. 优先使用环境变量中的后端URL
   if (process.env.BACKEND_URL) {
-    logger.debug(`自动检测失败，使用环境变量 BACKEND_URL: ${process.env.BACKEND_URL}`)
+    logger.debug(`使用环境变量 BACKEND_URL: ${process.env.BACKEND_URL}`)
     return process.env.BACKEND_URL
   }
 
-  // 3. 最后的回退方案
-  const fallbackUrl = `${protocol}://${hostname}`
-  logger.debug(`使用默认回退URL: ${fallbackUrl}`)
+  // 2. 从反向代理头信息构建后端URL
+  const forwardedProto = headers['x-forwarded-proto'] || headers['x-forwarded-protocol']
+  const forwardedHost = headers['x-forwarded-host'] || headers['x-forwarded-server']
+  
+  if (forwardedProto && forwardedHost) {
+    const baseUrl = `${forwardedProto}://${forwardedHost}`
+    logger.debug(`从反向代理头构建后端URL: ${baseUrl}`)
+    return baseUrl
+  }
+
+  // 3. 从Host头构建后端URL（确保是后端自身的地址）
+  const host = headers['host']
+  if (host) {
+    // 判断协议
+    let protocol = 'http'
+    if (headers['x-forwarded-ssl'] === 'on' || headers['x-forwarded-scheme'] === 'https') {
+      protocol = 'https'
+    }
+    
+    const baseUrl = `${protocol}://${host}`
+    logger.debug(`从Host头构建后端URL: ${baseUrl}`)
+    return baseUrl
+  }
+
+  // 4. 默认回退到开发环境地址
+  const fallbackUrl = 'http://localhost:8080'
+  logger.debug(`使用默认后端URL: ${fallbackUrl}`)
   return fallbackUrl
 }
 
