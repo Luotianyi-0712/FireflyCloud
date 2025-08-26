@@ -464,7 +464,8 @@ export default function HomePage() {
                 className="text-4xl sm:text-6xl md:text-8xl font-bold text-white mb-6 sm:mb-8 floating mobile-text"
                 style={{
                   fontFamily: "'Microsoft YaHei', '微软雅黑', sans-serif",
-                  animationDelay: '0.2s'
+                  animationDelay: '0.2s',
+                  textShadow: '0 2px 4px rgba(0, 0, 0, 0.5), 0 0 10px rgba(0, 0, 0, 0.3)'
                 }}
               >
                 FireflyCloud
@@ -472,7 +473,11 @@ export default function HomePage() {
 
               <p 
                 className="text-lg sm:text-xl md:text-2xl text-white/90 max-w-3xl mx-auto leading-relaxed mb-8 sm:mb-12 mobile-text px-4"
-                style={{animationDelay: '0.4s', animation: 'fadeInUp 1s ease-out 0.4s both'}}
+                style={{
+                  animationDelay: '0.4s', 
+                  animation: 'fadeInUp 1s ease-out 0.4s both',
+                  textShadow: '0 1px 3px rgba(0, 0, 0, 0.4)'
+                }}
               >
                 支持多种策略的云存储平台，为个人和团队提供安全、快速、可靠的文件管理体验
               </p>
@@ -483,8 +488,13 @@ export default function HomePage() {
               >
                 <Button 
                   size="lg"
-                  className="w-full sm:w-auto bg-white/20 text-white border-white/30 hover:bg-white/30 hover:text-white shine relative overflow-hidden glass-effect px-6 sm:px-8 py-3 sm:py-4 text-base sm:text-lg rounded-full mobile-btn"
+                  className="w-full sm:w-auto bg-white/30 text-white border-white/40 hover:bg-white/40 hover:text-white shine relative overflow-hidden glass-effect px-6 sm:px-8 py-3 sm:py-4 text-base sm:text-lg rounded-full mobile-btn"
                   onClick={() => router.push("/register")}
+                  style={{ 
+                    textShadow: '0 1px 3px rgba(0, 0, 0, 0.5)',
+                    backdropFilter: 'blur(8px)',
+                    backgroundColor: 'rgba(0, 0, 0, 0.25)'
+                  }}
                 >
                   立即开始
                   <ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5" />
@@ -492,8 +502,13 @@ export default function HomePage() {
                 <Button 
                   variant="outline" 
                   size="lg"
-                  className="w-full sm:w-auto text-white border-white/40 hover:bg-white/10 hover:text-white glass-effect px-6 sm:px-8 py-3 sm:py-4 text-base sm:text-lg rounded-full mobile-btn"
+                  className="w-full sm:w-auto text-white border-white/50 hover:bg-white/20 hover:text-white glass-effect px-6 sm:px-8 py-3 sm:py-4 text-base sm:text-lg rounded-full mobile-btn"
                   onClick={openGitHub}
+                  style={{ 
+                    textShadow: '0 1px 3px rgba(0, 0, 0, 0.5)',
+                    backdropFilter: 'blur(8px)',
+                    backgroundColor: 'rgba(0, 0, 0, 0.2)'
+                  }}
                 >
                   <Github className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
                   GitHub
@@ -519,10 +534,16 @@ export default function HomePage() {
         <section ref={secondPageRef} className="page-section seamless-transition relative">
           <div className="container mx-auto px-4 sm:px-6 py-16 sm:py-24 content-overlay">
             <div className="text-center mb-12 sm:mb-16">
-              <h2 className="text-3xl sm:text-4xl md:text-6xl font-bold text-white mb-4 sm:mb-6 mobile-text">
+              <h2 
+                className="text-3xl sm:text-4xl md:text-6xl font-bold text-white mb-4 sm:mb-6 mobile-text"
+                style={{ textShadow: '0 2px 4px rgba(0, 0, 0, 0.5), 0 0 8px rgba(0, 0, 0, 0.3)' }}
+              >
                 为什么选择 FireflyCloud？
               </h2>
-              <p className="text-lg sm:text-xl text-white/80 max-w-3xl mx-auto mobile-text px-4">
+              <p 
+                className="text-lg sm:text-xl text-white/80 max-w-3xl mx-auto mobile-text px-4"
+                style={{ textShadow: '0 1px 2px rgba(0, 0, 0, 0.4)' }}
+              >
                 我们提供企业级的云存储服务，让您的数据管理变得简单高效
               </p>
             </div>
@@ -533,8 +554,14 @@ export default function HomePage() {
                   <div className="flex h-12 w-12 sm:h-16 sm:w-16 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm mx-auto mb-4">
                     <Cloud className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
                   </div>
-                  <CardTitle className="text-xl sm:text-2xl text-white">双重存储</CardTitle>
-                  <CardDescription className="text-white/70 text-sm sm:text-base mobile-text">
+                  <CardTitle 
+                    className="text-xl sm:text-2xl text-white"
+                    style={{ textShadow: '0 1px 3px rgba(0, 0, 0, 0.5)' }}
+                  >双重存储</CardTitle>
+                  <CardDescription 
+                    className="text-white/70 text-sm sm:text-base mobile-text"
+                    style={{ textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)' }}
+                  >
                     灵活选择本地存储或 Cloudflare R2 云存储，根据需求无缝切换，确保数据安全可靠
                   </CardDescription>
                 </CardHeader>
@@ -551,8 +578,14 @@ export default function HomePage() {
                   <div className="flex h-12 w-12 sm:h-16 sm:w-16 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm mx-auto mb-4">
                     <Shield className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
                   </div>
-                  <CardTitle className="text-xl sm:text-2xl text-white">安全访问</CardTitle>
-                  <CardDescription className="text-white/70 text-sm sm:text-base mobile-text">
+                  <CardTitle 
+                    className="text-xl sm:text-2xl text-white"
+                    style={{ textShadow: '0 1px 3px rgba(0, 0, 0, 0.5)' }}
+                  >安全访问</CardTitle>
+                  <CardDescription 
+                    className="text-white/70 text-sm sm:text-base mobile-text"
+                    style={{ textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)' }}
+                  >
                     基于角色的访问控制，支持管理员和用户权限管理，采用行业标准加密技术保护数据
                   </CardDescription>
                 </CardHeader>
@@ -569,8 +602,14 @@ export default function HomePage() {
                   <div className="flex h-12 w-12 sm:h-16 sm:w-16 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm mx-auto mb-4">
                     <Zap className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
                   </div>
-                  <CardTitle className="text-xl sm:text-2xl text-white">快速可靠</CardTitle>
-                  <CardDescription className="text-white/70 text-sm sm:text-base mobile-text">
+                  <CardTitle 
+                    className="text-xl sm:text-2xl text-white"
+                    style={{ textShadow: '0 1px 3px rgba(0, 0, 0, 0.5)' }}
+                  >快速可靠</CardTitle>
+                  <CardDescription 
+                    className="text-white/70 text-sm sm:text-base mobile-text"
+                    style={{ textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)' }}
+                  >
                     采用现代化技术架构，提供高性能文件传输，支持大文件上传下载，稳定可靠
                   </CardDescription>
                 </CardHeader>
@@ -593,29 +632,53 @@ export default function HomePage() {
                 <div className="flex h-12 w-12 sm:h-16 sm:w-16 items-center justify-center rounded-2xl glass-effect">
                   <Upload className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
                 </div>
-                <h3 className="font-semibold text-lg sm:text-xl text-white">快速上传</h3>
-                <p className="text-white/70 text-sm sm:text-base mobile-text">支持拖拽上传，批量处理</p>
+                <h3 
+                  className="font-semibold text-lg sm:text-xl text-white"
+                  style={{ textShadow: '0 1px 3px rgba(0, 0, 0, 0.5)' }}
+                >快速上传</h3>
+                <p 
+                  className="text-white/70 text-sm sm:text-base mobile-text"
+                  style={{ textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)' }}
+                >支持拖拽上传，批量处理</p>
               </div>
               <div className="flex flex-col items-center space-y-3 sm:space-y-4 text-center feature-card">
                 <div className="flex h-12 w-12 sm:h-16 sm:w-16 items-center justify-center rounded-2xl glass-effect">
                   <Download className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
                 </div>
-                <h3 className="font-semibold text-lg sm:text-xl text-white">便捷下载</h3>
-                <p className="text-white/70 text-sm sm:text-base mobile-text">一键下载，支持断点续传</p>
+                <h3 
+                  className="font-semibold text-lg sm:text-xl text-white"
+                  style={{ textShadow: '0 1px 3px rgba(0, 0, 0, 0.5)' }}
+                >便捷下载</h3>
+                <p 
+                  className="text-white/70 text-sm sm:text-base mobile-text"
+                  style={{ textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)' }}
+                >一键下载，支持断点续传</p>
               </div>
               <div className="flex flex-col items-center space-y-3 sm:space-y-4 text-center feature-card">
                 <div className="flex h-12 w-12 sm:h-16 sm:w-16 items-center justify-center rounded-2xl glass-effect">
                   <Users className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
                 </div>
-                <h3 className="font-semibold text-lg sm:text-xl text-white">团队协作</h3>
-                <p className="text-white/70 text-sm sm:text-base mobile-text">多用户管理，权限控制</p>
+                <h3 
+                  className="font-semibold text-lg sm:text-xl text-white"
+                  style={{ textShadow: '0 1px 3px rgba(0, 0, 0, 0.5)' }}
+                >团队协作</h3>
+                <p 
+                  className="text-white/70 text-sm sm:text-base mobile-text"
+                  style={{ textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)' }}
+                >多用户管理，权限控制</p>
               </div>
               <div className="flex flex-col items-center space-y-3 sm:space-y-4 text-center feature-card">
                 <div className="flex h-12 w-12 sm:h-16 sm:w-16 items-center justify-center rounded-2xl glass-effect">
                   <Globe className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
                 </div>
-                <h3 className="font-semibold text-lg sm:text-xl text-white">全球访问</h3>
-                <p className="text-white/70 text-sm sm:text-base mobile-text">CDN 加速，全球可达</p>
+                <h3 
+                  className="font-semibold text-lg sm:text-xl text-white"
+                  style={{ textShadow: '0 1px 3px rgba(0, 0, 0, 0.5)' }}
+                >全球访问</h3>
+                <p 
+                  className="text-white/70 text-sm sm:text-base mobile-text"
+                  style={{ textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)' }}
+                >CDN 加速，全球可达</p>
               </div>
             </div>
           </div>
@@ -625,10 +688,16 @@ export default function HomePage() {
         <section className="py-20 sm:py-32 relative seamless-transition">
           <div className="container mx-auto px-4 sm:px-6 text-center content-overlay">
             <div className="max-w-4xl mx-auto space-y-6 sm:space-y-8">
-              <h2 className="text-3xl sm:text-4xl md:text-6xl font-bold text-white mb-4 sm:mb-6 mobile-text">
+              <h2 
+                className="text-3xl sm:text-4xl md:text-6xl font-bold text-white mb-4 sm:mb-6 mobile-text"
+                style={{ textShadow: '0 2px 4px rgba(0, 0, 0, 0.5), 0 0 8px rgba(0, 0, 0, 0.3)' }}
+              >
                 准备开始使用了吗？
               </h2>
-              <p className="text-lg sm:text-xl text-white/80 max-w-3xl mx-auto mb-8 sm:mb-12 mobile-text px-4">
+              <p 
+                className="text-lg sm:text-xl text-white/80 max-w-3xl mx-auto mb-8 sm:mb-12 mobile-text px-4"
+                style={{ textShadow: '0 1px 2px rgba(0, 0, 0, 0.4)' }}
+              >
                 立即注册，享受专业的云存储服务，让文件管理变得简单高效
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6 px-4">
