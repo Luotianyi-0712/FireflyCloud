@@ -391,7 +391,7 @@ export default function HomePage() {
           }}
         >
           <video autoPlay muted loop playsInline>
-            <source src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/alt-g7Cv2QzqL3k6ey3igjNYkM32d8Fld7.mp4" type="video/mp4" />
+            <source src="https://r2.cialloo.site/%E5%A3%81%E7%BA%B8/%E5%A2%9F%E8%93%9D%E7%BB%BD%E7%B5%AE.mp4" type="video/mp4" />
           </video>
         </div>
 
