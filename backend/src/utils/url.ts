@@ -10,6 +10,8 @@ export function getBaseUrl(headers: Record<string, string | undefined>): string 
   const forwardedProto = headers['x-forwarded-proto'] || headers['x-forwarded-protocol']
   const forwardedHost = headers['x-forwarded-host'] || headers['x-forwarded-server']
   const host = headers['host']
+  const origin = headers['origin']
+  const referer = headers['referer']
 
   let protocol = 'http'
   let hostname = 'localhost:8080'
@@ -31,7 +33,7 @@ export function getBaseUrl(headers: Record<string, string | undefined>): string 
     hostname = forwardedHost
     logger.debug(`从 X-Forwarded-Host 获取主机名: ${hostname}`)
     autoDetected = true
-  } else if (host) {
+  } else if (host && !host.includes('127.0.0.1') && !host.includes('localhost')) {
     hostname = host
     logger.debug(`从 Host 头获取主机名: ${hostname}`)
     autoDetected = true
@@ -42,6 +44,29 @@ export function getBaseUrl(headers: Record<string, string | undefined>): string 
     const baseUrl = `${protocol}://${hostname}`
     logger.debug(`自动检测成功，使用基础URL: ${baseUrl}`)
     return baseUrl
+  }
+
+  // 尝试从Origin或Referer获取
+  if (origin && !origin.includes('127.0.0.1') && !origin.includes('localhost')) {
+    try {
+      const originUrl = new URL(origin)
+      const baseUrl = `${originUrl.protocol}//${originUrl.host}`
+      logger.debug(`从 Origin 获取基础URL: ${baseUrl}`)
+      return baseUrl
+    } catch (e) {
+      logger.debug(`解析 Origin 失败: ${origin}`)
+    }
+  }
+
+  if (referer && !referer.includes('127.0.0.1') && !referer.includes('localhost')) {
+    try {
+      const refererUrl = new URL(referer)
+      const baseUrl = `${refererUrl.protocol}//${refererUrl.host}`
+      logger.debug(`从 Referer 获取基础URL: ${baseUrl}`)
+      return baseUrl
+    } catch (e) {
+      logger.debug(`解析 Referer 失败: ${referer}`)
+    }
   }
 
   // 2. 自动检测失败时，使用环境变量作为回退
