@@ -92,6 +92,29 @@ export const contentRoutes = new Elysia()
 			try {
 				const content = typeof body === 'string' ? (body as any) : String(body)
 				const contentBuffer = Buffer.from(content, 'utf8')
+				
+				const newSize = Buffer.byteLength(content, 'utf8')
+				const oldSize = file.size
+				const sizeChange = newSize - oldSize
+				
+				// 如果文件变大，检查配额
+				if (sizeChange > 0) {
+					const quotaCheck = await QuotaService.checkUserQuota(user.userId, sizeChange)
+					if (!quotaCheck.allowed) {
+						logger.warn(`用户 ${user.userId} 编辑文件配额不足: 需要额外 ${sizeChange} 字节, 可用 ${quotaCheck.availableSpace} 字节`)
+						set.status = 413
+						return { 
+							error: "当前已超出配额限制，请删除文件或者联系管理员以获得更多的配额。",
+							details: {
+								sizeChange: sizeChange,
+								currentUsed: quotaCheck.currentUsed,
+								maxStorage: quotaCheck.maxStorage,
+								availableSpace: quotaCheck.availableSpace
+							}
+						}
+					}
+				}
+				
 				const storageService = new StorageService(config)
 				if (config.storageType === "local") {
 					const filePath = path.join(process.cwd(), "uploads", file.storagePath)
@@ -110,9 +133,7 @@ export const contentRoutes = new Elysia()
 					} as File
 					await storageService.uploadFile(fileObject, file.storagePath)
 				}
-				const newSize = Buffer.byteLength(content, 'utf8')
-				const oldSize = file.size
-				const sizeChange = newSize - oldSize
+				
 				await db.update(files).set({ size: newSize, createdAt: Date.now() }).where(eq(files.id, params.id))
 				if (sizeChange !== 0) {
 					await QuotaService.updateUserStorage(user.userId, sizeChange)

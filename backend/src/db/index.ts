@@ -296,6 +296,24 @@ async function initializeDatabase() {
         updated_at INTEGER NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS microsoft_oauth_config (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        enabled INTEGER NOT NULL DEFAULT 0,
+        client_id TEXT,
+        client_secret TEXT,
+        tenant_id TEXT DEFAULT 'common',
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS microsoft_oauth_redirect_uris (
+        id TEXT PRIMARY KEY,
+        redirect_uri TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS user_storage_assignments (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -318,6 +336,8 @@ async function initializeDatabase() {
       CREATE INDEX IF NOT EXISTS idx_user_storage_assignments_user_id ON user_storage_assignments(user_id);
       CREATE INDEX IF NOT EXISTS idx_user_storage_assignments_strategy_id ON user_storage_assignments(strategy_id);
       CREATE INDEX IF NOT EXISTS idx_role_storage_defaults_role ON role_storage_defaults(role);
+      CREATE INDEX IF NOT EXISTS idx_microsoft_oauth_redirect_uris_enabled ON microsoft_oauth_redirect_uris(enabled);
+      CREATE INDEX IF NOT EXISTS idx_microsoft_oauth_redirect_uris_redirect_uri ON microsoft_oauth_redirect_uris(redirect_uri);
     `)
 
     // 检查并添加 email_verified 字段
@@ -497,10 +517,16 @@ async function initializeDatabase() {
       VALUES (1, 'FireflyCloud', '云存储', 1, ${now});
     `)
 
-    // 新增：插入 google_oauth_config 默认数据
+    // 新增：插入 OAuth 配置默认数据
     sqlite.exec(`
       INSERT OR IGNORE INTO google_oauth_config (id, enabled, updated_at)
       VALUES (1, 0, ${Date.now()});
+      
+      INSERT OR IGNORE INTO github_oauth_config (id, enabled, updated_at)
+      VALUES (1, 0, ${Date.now()});
+      
+      INSERT OR IGNORE INTO microsoft_oauth_config (id, enabled, tenant_id, updated_at)
+      VALUES (1, 0, 'common', ${Date.now()});
     `)
 
     // 初始化存储策略系统
@@ -807,9 +833,14 @@ async function validateDatabaseTables() {
       'file_shares',
       'user_quotas',
       'role_quota_config',
-      // 新增检查
+      // OAuth 配置表
       'google_oauth_config',
       'google_oauth_redirect_uris',
+      'github_oauth_config', 
+      'github_oauth_redirect_uris',
+      'microsoft_oauth_config',
+      'microsoft_oauth_redirect_uris',
+      // 存储策略表
       'user_storage_assignments',
       'role_storage_defaults'
     ]

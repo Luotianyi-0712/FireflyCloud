@@ -4,12 +4,13 @@ import { bearer } from "@elysiajs/bearer"
 import bcrypt from "bcryptjs"
 import { nanoid } from "nanoid"
 import { db } from "../db"
-import { users, emailVerificationCodes, smtpConfig, googleOAuthConfig, googleOAuthRedirectUris, githubOAuthConfig, githubOAuthRedirectUris, files, storageConfig, userQuotas, siteConfig } from "../db/schema"
+import { users, emailVerificationCodes, smtpConfig, googleOAuthConfig, googleOAuthRedirectUris, githubOAuthConfig, githubOAuthRedirectUris, microsoftOAuthConfig, microsoftOAuthRedirectUris, files, storageConfig, userQuotas, siteConfig } from "../db/schema"
 import { eq, and, gt } from "drizzle-orm"
 import { sendVerificationEmail, generateVerificationCode } from "../services/email"
 import { QuotaService } from "../services/quota"
 import { GoogleOAuthService } from "../services/google-oauth"
 import { GitHubOAuthService } from "../services/github-oauth"
+import { MicrosoftOAuthService } from "../services/microsoft-oauth"
 import { logger } from "../utils/logger"
 
 // 检查 SMTP 是否启用的辅助函数
@@ -125,6 +126,7 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
           // 如果没有找到完全匹配的，使用第一个启用的回调链接
           finalRedirectUri = redirectUris[0].redirectUri
           logger.debug(`未找到匹配的回调链接，使用默认的: ${finalRedirectUri}`)
+          logger.warn(`建议在管理后台添加回调链接: ${expectedRedirectUri}`)
         }
       } else {
         // 如果没有传入origin，使用第一个启用的回调链接
@@ -141,6 +143,87 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
       return { authUrl }
     } catch (error) {
       logger.error("生成谷歌OAuth URL失败:", error)
+      set.status = 500
+      return { error: "生成授权链接失败" }
+    }
+  })
+  .get("/microsoft-oauth-status", async () => {
+    try {
+      const config = await db.select().from(microsoftOAuthConfig).get()
+      
+      // 检查是否有至少一个启用的回调链接
+      const redirectUris = await db
+        .select()
+        .from(microsoftOAuthRedirectUris)
+        .where(eq(microsoftOAuthRedirectUris.enabled, true))
+        .all()
+      
+      return { 
+        enabled: config?.enabled || false,
+        configured: !!(config?.clientId && config?.clientSecret && redirectUris.length > 0)
+      }
+    } catch (error) {
+      logger.error("Failed to check Microsoft OAuth status:", error)
+      return { enabled: false, configured: false }
+    }
+  })
+  .get("/microsoft-oauth-url", async ({ query, set }) => {
+    try {
+      const config = await db.select().from(microsoftOAuthConfig).get()
+      
+      if (!config?.enabled || !config.clientId || !config.clientSecret) {
+        set.status = 400
+        return { error: "Microsoft OAuth未配置或未启用" }
+      }
+
+      // 获取所有启用的回调链接
+      const redirectUris = await db
+        .select()
+        .from(microsoftOAuthRedirectUris)
+        .where(eq(microsoftOAuthRedirectUris.enabled, true))
+        .all()
+
+      if (redirectUris.length === 0) {
+        set.status = 400
+        return { error: "未配置有效的回调链接" }
+      }
+
+      // 智能选择回调链接
+      let finalRedirectUri: string
+      const { origin } = query as { origin?: string }
+
+      if (origin) {
+        // 构造期望的回调链接
+        const expectedRedirectUri = `${origin}/auth/microsoft/callback`
+        
+        // 寻找匹配的回调链接
+        const matchedUri = redirectUris.find(uri => uri.redirectUri === expectedRedirectUri)
+        
+        if (matchedUri) {
+          finalRedirectUri = matchedUri.redirectUri
+          logger.debug(`使用匹配的Microsoft OAuth回调链接: ${finalRedirectUri}`)
+        } else {
+          // 如果没有找到完全匹配的，使用第一个启用的回调链接
+          finalRedirectUri = redirectUris[0].redirectUri
+          logger.debug(`未找到匹配的回调链接，使用默认的: ${finalRedirectUri}`)
+          logger.warn(`建议在管理后台添加回调链接: ${expectedRedirectUri}`)
+        }
+      } else {
+        // 如果没有传入origin，使用第一个启用的回调链接
+        finalRedirectUri = redirectUris[0].redirectUri
+      }
+
+      const microsoftOAuth = new MicrosoftOAuthService({
+        clientId: config.clientId,
+        clientSecret: config.clientSecret,
+        redirectUri: finalRedirectUri,
+        tenantId: config.tenantId || 'common'
+      })
+
+      const authUrl = microsoftOAuth.getAuthUrl()
+      return { authUrl }
+    } catch (error) {
+      logger.error("生成Microsoft OAuth URL失败:", error)
       set.status = 500
       return { error: "生成授权链接失败" }
     }
@@ -184,6 +267,7 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
           // 如果没有找到完全匹配的，使用第一个启用的回调链接
           finalRedirectUri = redirectUris[0].redirectUri
           logger.debug(`未找到匹配的回调链接，使用默认的: ${finalRedirectUri}`)
+          logger.warn(`建议在管理后台添加回调链接: ${expectedRedirectUri}`)
         }
       } else {
         // 如果没有传入origin，使用第一个启用的回调链接
@@ -204,7 +288,7 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
       return { error: "生成授权链接失败" }
     }
   })
-  .post("/google-oauth-callback", async ({ body, jwt, set }) => {
+  .post("/google-oauth-callback", async ({ body, jwt, set, headers }) => {
     try {
       const { code } = body as { code: string }
 
@@ -235,10 +319,42 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
         return { error: "未配置有效的回调链接" }
       }
 
-      // 使用第一个启用的回调链接
-      const selectedRedirectUri = googleRedirectUris[0].redirectUri
+      // 智能选择回调链接（与授权URL生成逻辑保持一致）
+      let selectedRedirectUri: string
       
-      logger.info(`使用Google OAuth回调链接: ${selectedRedirectUri}`)
+      // 尝试从请求头获取origin信息
+      const referer = headers['referer'] || headers['origin']
+      let origin: string | undefined
+      
+      if (referer) {
+        try {
+          const refererUrl = new URL(referer)
+          origin = refererUrl.origin
+        } catch {
+          // 如果解析失败，忽略
+        }
+      }
+      
+      if (origin) {
+        // 构造期望的回调链接
+        const expectedRedirectUri = `${origin}/auth/google/callback`
+        
+        // 寻找匹配的回调链接
+        const matchedUri = googleRedirectUris.find(uri => uri.redirectUri === expectedRedirectUri)
+        
+        if (matchedUri) {
+          selectedRedirectUri = matchedUri.redirectUri
+          logger.info(`使用匹配的Google OAuth回调链接: ${selectedRedirectUri} (基于origin: ${origin})`)
+        } else {
+          // 如果没有找到完全匹配的，使用第一个启用的回调链接
+          selectedRedirectUri = googleRedirectUris[0].redirectUri
+          logger.info(`未找到匹配的回调链接，使用默认的: ${selectedRedirectUri} (期望: ${expectedRedirectUri})`)
+        }
+      } else {
+        // 如果没有origin信息，使用第一个启用的回调链接
+        selectedRedirectUri = googleRedirectUris[0].redirectUri
+        logger.info(`无origin信息，使用默认Google OAuth回调链接: ${selectedRedirectUri}`)
+      }
 
       // 创建Google OAuth服务实例
       const googleOAuthService = new GoogleOAuthService({
@@ -335,7 +451,7 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
       code: t.String(),
     }),
   })
-  .post("/github-oauth-callback", async ({ body, jwt, set }) => {
+  .post("/github-oauth-callback", async ({ body, jwt, set, headers }) => {
     try {
       const { code, redirectUri } = body as { code?: string; redirectUri?: string }
 
@@ -364,18 +480,52 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
         return { error: "未配置有效的回调链接" }
       }
 
-      // 确定使用的回调链接
+      // 智能选择回调链接
       let finalRedirectUri: string
+      
       if (redirectUri) {
+        // 如果明确传入了回调URI，验证并使用它
         const allowedUri = redirectUris.find(uri => uri.redirectUri === redirectUri)
         if (!allowedUri) {
           set.status = 400
           return { error: "无效的回调链接" }
         }
         finalRedirectUri = redirectUri
+        logger.info(`使用传入的GitHub OAuth回调链接: ${finalRedirectUri}`)
       } else {
-        // 如果没有传入，使用第一个启用的回调链接
-        finalRedirectUri = redirectUris[0].redirectUri
+        // 如果没有传入，尝试智能选择（与Google OAuth逻辑一致）
+        const referer = headers['referer'] || headers['origin']
+        let origin: string | undefined
+        
+        if (referer) {
+          try {
+            const refererUrl = new URL(referer)
+            origin = refererUrl.origin
+          } catch {
+            // 如果解析失败，忽略
+          }
+        }
+        
+        if (origin) {
+          // 构造期望的回调链接
+          const expectedRedirectUri = `${origin}/auth/github/callback`
+          
+          // 寻找匹配的回调链接
+          const matchedUri = redirectUris.find(uri => uri.redirectUri === expectedRedirectUri)
+          
+          if (matchedUri) {
+            finalRedirectUri = matchedUri.redirectUri
+            logger.info(`使用匹配的GitHub OAuth回调链接: ${finalRedirectUri} (基于origin: ${origin})`)
+          } else {
+            // 如果没有找到完全匹配的，使用第一个启用的回调链接
+            finalRedirectUri = redirectUris[0].redirectUri
+            logger.info(`未找到匹配的回调链接，使用默认的: ${finalRedirectUri} (期望: ${expectedRedirectUri})`)
+          }
+        } else {
+          // 如果没有origin信息，使用第一个启用的回调链接
+          finalRedirectUri = redirectUris[0].redirectUri
+          logger.info(`无origin信息，使用默认GitHub OAuth回调链接: ${finalRedirectUri}`)
+        }
       }
 
       const githubOAuth = new GitHubOAuthService({
@@ -387,11 +537,12 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
       // 获取访问令牌
       const tokenResponse = await githubOAuth.getAccessToken(code)
       
-      // 获取用户邮箱
-      const userEmail = await githubOAuth.getPrimaryEmail(tokenResponse.access_token)
+      logger.info(`GitHub访问令牌获取成功，令牌类型: ${tokenResponse.token_type}`)
       
-      // 获取用户信息
-      const userInfo = await githubOAuth.getUserInfo(tokenResponse.access_token)
+      // 获取用户邮箱和用户信息（一次调用避免重复）
+      const { email: userEmail, userInfo } = await githubOAuth.getPrimaryEmailAndUserInfo(tokenResponse.access_token)
+
+      logger.info(`GitHub用户信息获取成功: ${userInfo.login} <${userEmail}>`)
 
       // 检查用户是否已存在
       let user = await db.select().from(users).where(eq(users.email, userEmail)).get()
@@ -452,6 +603,171 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
       }
     } catch (error) {
       logger.error("GitHub OAuth回调处理失败:", error)
+      set.status = 500
+      return { error: "登录失败，请稍后重试" }
+    }
+  }, {
+    body: t.Object({
+      code: t.String(),
+    }),
+  })
+  .post("/microsoft-oauth-callback", async ({ body, jwt, set, headers }) => {
+    try {
+      const { code, redirectUri } = body as { code?: string; redirectUri?: string }
+
+      if (!code) {
+        set.status = 400
+        return { error: "缺少授权码" }
+      }
+
+      // 获取Microsoft OAuth配置
+      const config = await db.select().from(microsoftOAuthConfig).get()
+      
+      if (!config?.enabled || !config.clientId || !config.clientSecret) {
+        set.status = 400
+        return { error: "Microsoft OAuth未配置或未启用" }
+      }
+
+      // 获取所有启用的回调链接
+      const redirectUris = await db
+        .select()
+        .from(microsoftOAuthRedirectUris)
+        .where(eq(microsoftOAuthRedirectUris.enabled, true))
+        .all()
+
+      if (redirectUris.length === 0) {
+        set.status = 400
+        return { error: "未配置有效的回调链接" }
+      }
+
+      // 智能选择回调链接
+      let finalRedirectUri: string
+      
+      if (redirectUri) {
+        // 如果明确传入了回调URI，验证并使用它
+        const allowedUri = redirectUris.find(uri => uri.redirectUri === redirectUri)
+        if (!allowedUri) {
+          set.status = 400
+          return { error: "无效的回调链接" }
+        }
+        finalRedirectUri = redirectUri
+        logger.info(`使用传入的Microsoft OAuth回调链接: ${finalRedirectUri}`)
+      } else {
+        // 如果没有传入，尝试智能选择（与其他OAuth逻辑一致）
+        const referer = headers['referer'] || headers['origin']
+        let origin: string | undefined
+        
+        if (referer) {
+          try {
+            const refererUrl = new URL(referer)
+            origin = refererUrl.origin
+          } catch {
+            // 如果解析失败，忽略
+          }
+        }
+        
+        if (origin) {
+          // 构造期望的回调链接
+          const expectedRedirectUri = `${origin}/auth/microsoft/callback`
+          
+          // 寻找匹配的回调链接
+          const matchedUri = redirectUris.find(uri => uri.redirectUri === expectedRedirectUri)
+          
+          if (matchedUri) {
+            finalRedirectUri = matchedUri.redirectUri
+            logger.info(`使用匹配的Microsoft OAuth回调链接: ${finalRedirectUri} (基于origin: ${origin})`)
+          } else {
+            // 如果没有找到完全匹配的，使用第一个启用的回调链接
+            finalRedirectUri = redirectUris[0].redirectUri
+            logger.info(`未找到匹配的回调链接，使用默认的: ${finalRedirectUri} (期望: ${expectedRedirectUri})`)
+          }
+        } else {
+          // 如果没有origin信息，使用第一个启用的回调链接
+          finalRedirectUri = redirectUris[0].redirectUri
+          logger.info(`无origin信息，使用默认Microsoft OAuth回调链接: ${finalRedirectUri}`)
+        }
+      }
+
+      const microsoftOAuth = new MicrosoftOAuthService({
+        clientId: config.clientId,
+        clientSecret: config.clientSecret,
+        redirectUri: finalRedirectUri,
+        tenantId: config.tenantId || 'common'
+      })
+
+      // 获取访问令牌
+      const tokenResponse = await microsoftOAuth.getAccessToken(code)
+      
+      logger.info(`Microsoft访问令牌获取成功，令牌类型: ${tokenResponse.token_type}`)
+      
+      // 获取用户邮箱和用户信息（一次调用避免重复）
+      const { email: userEmail, userInfo } = await microsoftOAuth.getPrimaryEmailAndUserInfo(tokenResponse.access_token)
+
+      logger.info(`Microsoft用户信息获取成功: ${userInfo.displayName} <${userEmail}>`)
+
+      // 检查用户是否已存在
+      let user = await db.select().from(users).where(eq(users.email, userEmail)).get()
+
+      if (!user) {
+        // 检查是否允许用户注册
+        const siteCfg = await db.select().from(siteConfig).get()
+        const allowRegistration = siteCfg?.allowUserRegistration ?? true
+        
+        if (!allowRegistration) {
+          set.status = 403
+          return { error: "系统已关闭新用户注册功能" }
+        }
+
+        // 创建新用户
+        const userId = nanoid()
+        const now = Date.now()
+
+        await db.insert(users).values({
+          id: userId,
+          email: userEmail,
+          password: "", // Microsoft登录用户不需要密码
+          role: "user",
+          emailVerified: true, // Microsoft账户已验证
+          createdAt: now,
+          updatedAt: now,
+        })
+
+        user = {
+          id: userId,
+          email: userEmail,
+          password: "",
+          role: "user",
+          emailVerified: true,
+          createdAt: now,
+          updatedAt: now,
+        }
+
+        // 为新用户创建配额
+        await QuotaService.createUserQuota(userId, "user")
+        
+        logger.info(`创建新Microsoft用户: ${userEmail}`)
+      } else {
+        logger.info(`Microsoft用户登录: ${userEmail}`)
+      }
+
+      // 生成JWT令牌
+      const token = await jwt.sign({
+        userId: user.id,
+        email: user.email,
+        role: user.role,
+      })
+
+      return {
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          emailVerified: user.emailVerified,
+        },
+      }
+    } catch (error) {
+      logger.error("Microsoft OAuth回调处理失败:", error)
       set.status = 500
       return { error: "登录失败，请稍后重试" }
     }

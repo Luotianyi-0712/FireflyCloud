@@ -2,41 +2,30 @@
 
 import { useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useAuth } from "@/components/auth/auth-provider"
 
 function GitHubCallbackContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { loginWithGitHub } = useAuth()
 
   useEffect(() => {
-    const handleCallback = async () => {
-      const code = searchParams.get('code')
-      const error = searchParams.get('error')
+    const code = searchParams.get('code')
+    const error = searchParams.get('error')
 
-      if (error) {
-        console.error('GitHub OAuth error:', error)
-        router.push('/login?error=github_oauth_failed')
-        return
-      }
-
-      if (!code) {
-        console.error('No authorization code received')
-        router.push('/login?error=github_oauth_failed')
-        return
-      }
-
-      try {
-        await loginWithGitHub(code)
-        router.push('/dashboard')
-      } catch (error) {
-        console.error('GitHub OAuth callback error:', error)
-        router.push('/login?error=github_oauth_failed')
-      }
+    if (error) {
+      console.error('GitHub OAuth error:', error)
+      router.push('/login?error=github_oauth_failed&oauth_type=github')
+      return
     }
 
-    handleCallback()
-  }, [searchParams, router, loginWithGitHub])
+    if (!code) {
+      console.error('No authorization code received')
+      router.push('/login?error=github_oauth_failed&oauth_type=github')
+      return
+    }
+
+    // 成功获取授权码，重定向到登录页面进行处理（与Google OAuth保持一致）
+    router.push(`/login?code=${encodeURIComponent(code)}&oauth_type=github`)
+  }, [searchParams, router])
 
   return (
     <div className="flex items-center justify-center min-h-screen">

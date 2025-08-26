@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, AlertCircle, CheckCircle } from "lucide-react"
 
-function GoogleCallbackContent() {
+function MicrosoftCallbackContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -16,14 +16,14 @@ function GoogleCallbackContent() {
     const state = searchParams.get('state')
 
     if (error) {
-      // 谷歌OAuth错误，重定向到登录页面并显示错误
-      router.push(`/login?error=${encodeURIComponent('谷歌登录被取消或失败')}&oauth_type=google`)
+      // Microsoft OAuth错误，重定向到登录页面并显示错误
+      router.push(`/login?error=${encodeURIComponent('Microsoft登录被取消或失败')}&oauth_type=microsoft`)
       return
     }
 
     if (code) {
       // 成功获取授权码，重定向到登录页面进行处理
-      router.push(`/login?code=${encodeURIComponent(code)}&oauth_type=google`)
+      router.push(`/login?code=${encodeURIComponent(code)}&oauth_type=microsoft`)
       return
     }
 
@@ -37,15 +37,15 @@ function GoogleCallbackContent() {
         <CardHeader className="text-center">
           <CardTitle className="flex items-center justify-center gap-2">
             <Loader2 className="h-5 w-5 animate-spin" />
-            处理谷歌登录
+            处理Microsoft登录
           </CardTitle>
           <CardDescription>
-            正在处理您的谷歌账户登录...
+            正在处理您的Microsoft账户登录...
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="text-center text-sm text-muted-foreground">
-            请稍候，我们正在验证您的谷歌账户信息
+            请稍候，我们正在验证您的Microsoft账户信息
           </div>
         </CardContent>
       </Card>
@@ -53,10 +53,10 @@ function GoogleCallbackContent() {
   )
 }
 
-export default function GoogleCallbackPage() {
+export default function MicrosoftCallbackPage() {
   return (
     <Suspense fallback={null}>
-      <GoogleCallbackContent />
+      <MicrosoftCallbackContent />
     </Suspense>
   )
-}
+} 

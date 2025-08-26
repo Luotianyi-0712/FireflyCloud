@@ -7,6 +7,7 @@ import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage } from "@/co
 import { Cloud } from "lucide-react"
 import { GoogleOAuthConfiguration } from "@/components/admin/google-oauth-configuration"
 import { GitHubOAuthConfiguration } from "@/components/admin/github-oauth-configuration"
+import { MicrosoftOAuthConfiguration } from "@/components/admin/microsoft-oauth-configuration"
 
 export default function AdminOAuthPage() {
   return (
@@ -30,25 +31,9 @@ export default function AdminOAuthPage() {
           </div>
 
           <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Google OAuth</CardTitle>
-                <CardDescription>配置 Google OAuth 客户端与回调</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <GoogleOAuthConfiguration />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>GitHub OAuth</CardTitle>
-                <CardDescription>配置 GitHub OAuth 客户端与回调</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <GitHubOAuthConfiguration />
-              </CardContent>
-            </Card>
+            <GoogleOAuthConfiguration />
+            <GitHubOAuthConfiguration />
+            <MicrosoftOAuthConfiguration />
           </div>
         </div>
       </AppLayout>

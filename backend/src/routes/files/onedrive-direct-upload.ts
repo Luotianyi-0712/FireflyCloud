@@ -44,10 +44,31 @@ export const onedriveDirectUploadRoutes = new Elysia()
 			const { body, set } = ctx as any
 			const { user } = ctx as any
 			try {
-				const { filename, folderId, currentOneDrivePath } = body as { filename: string; folderId?: string; currentOneDrivePath?: string }
+				const { filename, fileSize, folderId, currentOneDrivePath } = body as { filename: string; fileSize: number; folderId?: string; currentOneDrivePath?: string }
 				if (!filename) {
 					set.status = 400
 					return { error: "filename is required" }
+				}
+				
+				if (!fileSize || fileSize <= 0) {
+					set.status = 400
+					return { error: "fileSize is required and must be positive" }
+				}
+
+				// 检查用户配额
+				const quotaCheck = await QuotaService.checkUserQuota(user.userId, fileSize)
+				if (!quotaCheck.allowed) {
+					logger.warn(`用户 ${user.userId} OneDrive上传配额不足: 需要 ${fileSize} 字节, 可用 ${quotaCheck.availableSpace} 字节`)
+					set.status = 413
+					return { 
+						error: "当前已超出配额限制，请删除文件或者联系管理员以获得更多的配额。",
+						details: {
+							fileSize: fileSize,
+							currentUsed: quotaCheck.currentUsed,
+							maxStorage: quotaCheck.maxStorage,
+							availableSpace: quotaCheck.availableSpace
+						}
+					}
 				}
 
 				// 加载存储配置
@@ -95,6 +116,7 @@ export const onedriveDirectUploadRoutes = new Elysia()
 		{
 			body: t.Object({
 				filename: t.String(),
+				fileSize: t.Number(),
 				folderId: t.Optional(t.String()),
 				currentOneDrivePath: t.Optional(t.String()),
 			}),
@@ -110,6 +132,22 @@ export const onedriveDirectUploadRoutes = new Elysia()
 				if (!filename || !size || !mimeType || !driveItemId) {
 					set.status = 400
 					return { error: "missing fields" }
+				}
+
+				// 二次配额验证 - 防止恶意绕过或客户端数据不一致
+				const quotaCheck = await QuotaService.checkUserQuota(user.userId, size)
+				if (!quotaCheck.allowed) {
+					logger.warn(`用户 ${user.userId} OneDrive上传完成时配额验证失败: 需要 ${size} 字节, 可用 ${quotaCheck.availableSpace} 字节`)
+					set.status = 413
+					return { 
+						error: "当前已超出配额限制，请删除文件或者联系管理员以获得更多的配额。",
+						details: {
+							fileSize: size,
+							currentUsed: quotaCheck.currentUsed,
+							maxStorage: quotaCheck.maxStorage,
+							availableSpace: quotaCheck.availableSpace
+						}
+					}
 				}
 
 				// 验证可选的文件夹归属

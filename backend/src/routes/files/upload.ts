@@ -98,12 +98,15 @@ export const uploadRoutes = new Elysia()
 				if (!quotaCheck.allowed) {
 					logger.warn(`用户 ${user.userId} 配额不足: 需要 ${file.size} 字节, 可用 ${quotaCheck.availableSpace} 字节`)
 					set.status = 413
-					return { error: "Storage quota exceeded", details: {
-						fileSize: file.size,
-						currentUsed: quotaCheck.currentUsed,
-						maxStorage: quotaCheck.maxStorage,
-						availableSpace: quotaCheck.availableSpace
-					}}
+					return { 
+						error: "当前已超出配额限制，请删除文件或者联系管理员获得更多的配额。", 
+						details: {
+							fileSize: file.size,
+							currentUsed: quotaCheck.currentUsed,
+							maxStorage: quotaCheck.maxStorage,
+							availableSpace: quotaCheck.availableSpace
+						}
+					}
 				}
 
 				const storageService = new StorageService(config)

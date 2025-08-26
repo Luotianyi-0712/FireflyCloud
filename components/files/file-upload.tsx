@@ -4,9 +4,9 @@ import { useState, useCallback } from "react"
 import { useAuth } from "@/components/auth/auth-provider"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Card, CardContent } from "@/components/ui/card"
-import { Upload, X, File as FileIcon, CheckCircle } from "lucide-react"
+import { Upload, X, File as FileIcon, CheckCircle, AlertCircle, Info, RotateCcw } from "lucide-react"
 import { useDropzone } from "react-dropzone"
 
 interface R2MountInfo {
@@ -65,6 +65,42 @@ export function FileUpload({ onUploadSuccess, currentFolderId, r2MountInfo, oneD
     setUploadFiles((prev) => prev.filter((_, i) => i !== index))
   }
 
+  const retryUpload = (index: number) => {
+    setUploadFiles((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, status: "pending", error: undefined } : item))
+    )
+    uploadFile(uploadFiles[index], index)
+  }
+
+  const getErrorVariant = (error: string) => {
+    if (error.includes("配额限制") || error.includes("quota")) {
+      return "default" // 使用默认样式，不那么严重
+    }
+    return "destructive" // 使用红色破坏性样式
+  }
+
+  const getErrorIcon = (error: string) => {
+    if (error.includes("配额限制") || error.includes("quota")) {
+      return <Info className="h-4 w-4" />
+    }
+    return <AlertCircle className="h-4 w-4" />
+  }
+
+  const getErrorTitle = (error: string) => {
+    if (error.includes("配额限制") || error.includes("quota")) {
+      return "存储空间不足"
+    }
+    if (error.includes("网络错误") || error.includes("network")) {
+      return "网络连接失败"
+    }
+    return "上传失败"
+  }
+
+  const canRetry = (error: string) => {
+    // 配额错误不能重试
+    return !error.includes("配额限制") && !error.includes("quota")
+  }
+
   const uploadFile = async (fileItem: UploadFile, index: number) => {
     if (!token) return
 
@@ -76,7 +112,10 @@ export function FileUpload({ onUploadSuccess, currentFolderId, r2MountInfo, oneD
       // 若当前使用 OneDrive 策略/路径，尝试直传
       const tryDirectOneDrive = async (): Promise<boolean> => {
         try {
-          const createBody: Record<string, any> = { filename: fileItem.file.name }
+          const createBody: Record<string, any> = { 
+            filename: fileItem.file.name,
+            fileSize: fileItem.file.size
+          }
           if (currentFolderId) createBody.folderId = currentFolderId
           if (oneDriveMountInfo?.currentOneDrivePath) createBody.currentOneDrivePath = oneDriveMountInfo.currentOneDrivePath
 
@@ -85,7 +124,16 @@ export function FileUpload({ onUploadSuccess, currentFolderId, r2MountInfo, oneD
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
             body: JSON.stringify(createBody)
           })
-          if (!sessionResp.ok) return false
+          if (!sessionResp.ok) {
+            // 处理OneDrive上传会话创建失败的错误
+            let errorMessage = "OneDrive上传会话创建失败"
+            try {
+              const errorData = await sessionResp.json()
+              errorMessage = errorData.error || errorMessage
+            } catch {}
+            setUploadFiles(prev => prev.map((item, i) => (i === index ? { ...item, status: 'error', error: errorMessage } : item)))
+            return false
+          }
           const sessionData = await sessionResp.json()
           if (!sessionData?.useDirect || !sessionData?.uploadUrl) return false
 
@@ -146,12 +194,22 @@ export function FileUpload({ onUploadSuccess, currentFolderId, r2MountInfo, oneD
               folderId: currentFolderId || undefined,
             })
           })
-          if (!finalizeResp.ok) return false
+          if (!finalizeResp.ok) {
+            // 处理OneDrive上传完成失败的错误
+            let errorMessage = "OneDrive上传完成失败"
+            try {
+              const errorData = await finalizeResp.json()
+              errorMessage = errorData.error || errorMessage
+            } catch {}
+            setUploadFiles(prev => prev.map((item, i) => (i === index ? { ...item, status: 'error', error: errorMessage } : item)))
+            return false
+          }
           // 成功
           setUploadFiles(prev => prev.map((item, i) => (i === index ? { ...item, status: 'success', progress: 100 } : item)))
           onUploadSuccess()
           return true
-        } catch {
+        } catch (error) {
+          setUploadFiles(prev => prev.map((item, i) => (i === index ? { ...item, status: 'error', error: 'OneDrive上传过程中发生错误' } : item)))
           return false
         }
       }
@@ -311,10 +369,21 @@ export function FileUpload({ onUploadSuccess, currentFolderId, r2MountInfo, oneD
 
                     <div className="flex items-center gap-2">
                       {fileItem.status === "success" && <CheckCircle className="h-5 w-5 text-green-600" />}
-                      {fileItem.status === "error" && <div className="text-sm text-red-600">{fileItem.error}</div>}
+                      {fileItem.status === "error" && <AlertCircle className="h-5 w-5 text-red-500" />}
                       {fileItem.status === "pending" && (
                         <Button size="sm" onClick={() => uploadFile(fileItem, index)}>
                           上传
+                        </Button>
+                      )}
+                      {fileItem.status === "error" && canRetry(fileItem.error || "") && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => retryUpload(index)}
+                          className="h-8 px-3"
+                        >
+                          <RotateCcw className="h-4 w-4 mr-1" />
+                          重试
                         </Button>
                       )}
                       <Button variant="ghost" size="sm" onClick={() => removeFile(index)}>
@@ -324,7 +393,7 @@ export function FileUpload({ onUploadSuccess, currentFolderId, r2MountInfo, oneD
                   </div>
 
                   {(fileItem.status === "uploading" || fileItem.status === "processing") && (
-                    <div className="mt-2 flex items-center gap-2">
+                    <div className="mt-3 flex items-center gap-2">
                       <Progress value={fileItem.progress} className="h-2 flex-1" />
                       <span className="text-sm text-muted-foreground w-14 text-right">
                         {fileItem.progress}%
@@ -332,6 +401,18 @@ export function FileUpload({ onUploadSuccess, currentFolderId, r2MountInfo, oneD
                       {fileItem.status === "processing" && (
                         <span className="text-xs text-muted-foreground">处理中...</span>
                       )}
+                    </div>
+                  )}
+
+                  {fileItem.status === "error" && (
+                    <div className="mt-3">
+                      <Alert variant={getErrorVariant(fileItem.error || "") as "default" | "destructive"}>
+                        {getErrorIcon(fileItem.error || "")}
+                        <AlertTitle>{getErrorTitle(fileItem.error || "")}</AlertTitle>
+                        <AlertDescription>
+                          {fileItem.error || "上传失败"}
+                        </AlertDescription>
+                      </Alert>
                     </div>
                   )}
                 </CardContent>

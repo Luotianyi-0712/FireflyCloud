@@ -24,6 +24,9 @@ interface AuthContextType {
   // 暴露GitHub相关方法
   loginWithGitHub: (code: string) => Promise<void>
   getGitHubAuthUrl: () => Promise<string>
+  // 暴露Microsoft相关方法
+  loginWithMicrosoft: (code: string) => Promise<void>
+  getMicrosoftAuthUrl: () => Promise<string>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -198,6 +201,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const getMicrosoftAuthUrl = async (): Promise<string> => {
+    // 传递当前的origin，让后端智能匹配合适的回调链接
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    const url = `${API_URL}/auth/microsoft-oauth-url${origin ? `?origin=${encodeURIComponent(origin)}` : ''}`
+    const response = await fetch(url)
+    
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "获取Microsoft授权链接失败")
+    }
+
+    const data = await response.json()
+    return data.authUrl
+  }
+
+  const loginWithMicrosoft = async (code: string) => {
+    const response = await fetch(`${API_URL}/auth/microsoft-oauth-callback`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ code }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "Microsoft登录失败，请稍后重试")
+    }
+
+    const data = await response.json()
+    setToken(data.token)
+    setUser(data.user)
+    if (isClient && typeof window !== 'undefined') {
+      localStorage.setItem("token", data.token)
+    }
+  }
+
   const logout = () => {
     setUser(null)
     setToken(null)
@@ -217,6 +257,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         getGoogleAuthUrl,
         loginWithGitHub,
         getGitHubAuthUrl,
+        loginWithMicrosoft,
+        getMicrosoftAuthUrl,
         logout,
         loading,
       }}
