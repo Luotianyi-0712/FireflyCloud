@@ -6,6 +6,7 @@ import { useEffect, useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import AnimatedBackground from "@/components/ui/animated-background"
 import {
   Cloud,
   Shield,
@@ -190,6 +191,8 @@ export default function HomePage() {
 
         .floating {
           animation: float 3s ease-in-out infinite;
+          position: relative;
+          z-index: 10;
         }
 
         .shine::after {
@@ -236,7 +239,7 @@ export default function HomePage() {
         .feature-card:nth-child(5) { animation-delay: 0.5s; }
         .feature-card:nth-child(6) { animation-delay: 0.6s; }
 
-        .video-background {
+        .animated-background {
           position: fixed;
           top: 0;
           left: 0;
@@ -244,12 +247,6 @@ export default function HomePage() {
           height: 100vh;
           z-index: -3;
           transition: filter 0.6s ease;
-        }
-
-        .video-background video {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
         }
 
         .dynamic-overlay {
@@ -339,7 +336,7 @@ export default function HomePage() {
 
         /* 移动端文本适配 */
         @media (max-width: 768px) {
-          .video-background {
+          .animated-background {
             height: 100vh;
           }
           .dynamic-overlay {
@@ -383,16 +380,14 @@ export default function HomePage() {
       `}</style>
 
       <div className="min-h-screen text-white relative overflow-x-hidden">
-        {/* 视频背景 - 固定定位，根据滚动动态模糊 */}
+        {/* 动画背景 - 固定定位，根据滚动动态模糊 */}
         <div 
-          className="video-background"
+          className="animated-background"
           style={{ 
             filter: `blur(${blurAmount}px)`,
           }}
         >
-          <video autoPlay muted loop playsInline>
-            <source src="https://r2.cialloo.site/%E5%A3%81%E7%BA%B8/%E5%A2%9F%E8%93%9D%E7%BB%BD%E7%B5%AE.mp4" type="video/mp4" />
-          </video>
+          <AnimatedBackground />
         </div>
 
         {/* 动态叠加层 - 创建平滑的渐变过渡 */}
@@ -450,7 +445,7 @@ export default function HomePage() {
         {/* 第一页 - Hero Section */}
         <section ref={firstPageRef} className="page-section flex items-center justify-center relative">
           <div className="container mx-auto px-4 sm:px-6 text-center content-overlay">
-            <div className="max-w-4xl mx-auto space-y-6 sm:space-y-8">
+            <div className="max-w-4xl mx-auto space-y-6 sm:space-y-8 py-8 sm:py-12">
               <Badge 
                 variant="outline" 
                 className="mb-4 sm:mb-6 glass-effect text-white border-white/30 floating text-xs sm:text-sm"
