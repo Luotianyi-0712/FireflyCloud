@@ -214,8 +214,13 @@ export function FileUpload({ onUploadSuccess, currentFolderId, r2MountInfo, oneD
         }
       }
 
-      // 若直传失败，回退到服务器中转
-      const directOk = await tryDirectOneDrive()
+      // 仅当在 OneDrive 挂载点内时，才尝试直传
+      let directOk = false
+      if (oneDriveMountInfo?.currentOneDrivePath) {
+        directOk = await tryDirectOneDrive()
+      }
+      
+      // 若直传失败或不适用，回退到服务器中转
       if (!directOk) {
         const formData = new FormData()
         formData.append("file", fileItem.file)
